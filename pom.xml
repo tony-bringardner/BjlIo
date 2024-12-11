@@ -1,0 +1,23 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<artifactId>bjl_io</artifactId>
+	<name>Bringardner Java Library IO</name>
+	<groupId>us.bringardner</groupId>
+	<version>0.1.0</version>
+	<description>
+		The IO project contains a few helpful classes for reading and
+		writing lines of text. The end of a line (EOL) of text varies from one
+		OS to another, but,
+		an Internet protocol is NOT system dependent so this package make it
+		easy to clearly define and use the EOL you need.
+	</description>
+	<dependencies>
+		<dependency>
+			<groupId>us.bringardner</groupId>
+			<artifactId>bjl_core</artifactId>
+			<version>0.1.0</version>
+		</dependency>
+	</dependencies>
+</project>
