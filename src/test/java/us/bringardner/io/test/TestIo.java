@@ -227,6 +227,7 @@ class TestIo {
 
 		for (int streamIdx = 0; streamIdx < streams.length; streamIdx++) {			
 			String res = streams[streamIdx].toString();
+			res = res.replaceAll("\r", "");
 			String [] lines = res.split("\n");
 			assertEquals(lineCount,lines.length,"output "+streamIdx+" does not have the correct number of lines");
 			for (int idx = 0; idx < lines.length; idx++) {
