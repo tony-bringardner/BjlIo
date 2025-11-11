@@ -5,7 +5,7 @@
 	<artifactId>bjl_io</artifactId>
 	<name>Bringardner Java Library IO</name>
 	<groupId>us.bringardner</groupId>
-	<version>0.1.0</version>
+	<version>0.1.1</version>
 	<description>
 		The IO project contains a few helpful classes for reading and
 		writing lines of text. The end of a line (EOL) of text varies from one
@@ -13,6 +13,7 @@
 		an Internet protocol is NOT system dependent so this package make it
 		easy to clearly define and use the EOL you need.
 	</description>
+	
 	<build>
 		<!-- <sourceDirectory>src</sourceDirectory> -->
 		<pluginManagement>
@@ -22,8 +23,8 @@
 					<artifactId>maven-compiler-plugin</artifactId>
 					<version>3.3</version>
 					<configuration>
-						<source>9</source>
-						<target>9</target>
+						<source>11</source>
+						<target>11</target>
 					</configuration>
 				</plugin>
 
@@ -80,8 +81,53 @@
 						</test>
 					</configuration>
 				</plugin>
+				<!--This plugin's configuration is used to store Eclipse m2e settings only. It has no influence on the Maven build itself.-->
+				<plugin>
+					<groupId>org.eclipse.m2e</groupId>
+					<artifactId>lifecycle-mapping</artifactId>
+					<version>1.0.0</version>
+					<configuration>
+						<lifecycleMappingMetadata>
+							<pluginExecutions>
+								<pluginExecution>
+									<pluginExecutionFilter>
+										<groupId>
+											org.apache.maven.plugins
+										</groupId>
+										<artifactId>
+											maven-compiler-plugin
+										</artifactId>
+										<versionRange>
+											[3.3,)
+										</versionRange>
+										<goals>
+											<goal>compile</goal>
+										</goals>
+									</pluginExecutionFilter>
+									<action>
+										<ignore></ignore>
+									</action>
+								</pluginExecution>
+								<pluginExecution>
+									<pluginExecutionFilter>
+										<groupId></groupId>
+										<artifactId></artifactId>
+										<versionRange>[,)</versionRange>
+										<goals>
+											<goal></goal>
+										</goals>
+									</pluginExecutionFilter>
+									<action>
+										<ignore></ignore>
+									</action>
+								</pluginExecution>
+							</pluginExecutions>
+						</lifecycleMappingMetadata>
+					</configuration>
+				</plugin>
 			</plugins>
 		</pluginManagement>
+		
 	</build>
 
 	<distributionManagement>
@@ -93,11 +139,13 @@
 
 	</distributionManagement>
 
+	
 	<dependencies>
-		<dependency>
-			<groupId>us.bringardner</groupId>
-			<artifactId>bjl_core</artifactId>
-			<version>0.1.0</version>
-		</dependency>
+	<dependency>
+  		<groupId>us.bringardner</groupId>
+  		<artifactId>bjl_core</artifactId>
+  		<version>0.1.1</version>
+	</dependency>
+		
 	</dependencies>
 </project>
