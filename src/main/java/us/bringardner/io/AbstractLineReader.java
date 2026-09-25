@@ -58,6 +58,9 @@ public abstract class AbstractLineReader extends FilterInputStream implements IL
 	private byte [] line = new byte[128];
 	private int lineLen;
 
+	//  Longest line readLine() accepts (0 = no limit).
+	private volatile int maxLineLength;
+
 	//  Read by other threads (e.g. idle time-out monitors) so they must be volatile.
 	private volatile long bytes;
 	private volatile long lastReadTime;
@@ -77,6 +80,42 @@ public abstract class AbstractLineReader extends FilterInputStream implements IL
 	 * false if a single LF terminates a line.
 	 */
 	protected abstract boolean isCrlfTerminated();
+
+	/**
+	 * Limit the length of a line. Without a limit (the default), a peer that never
+	 * sends a line terminator makes {@link #readLine()} buffer everything it sends
+	 * until memory runs out; use a limit whenever the input comes from the network.
+	 * <p>
+	 * When a line is longer, readLine() throws {@link LineTooLongException}. The
+	 * rest of that line has not been read, so the reader should normally be closed.
+	 * 
+	 * @param maxLineLength the most bytes in a line, not counting the terminator (0 or less: no limit)
+	 */
+	public void setMaxLineLength(int maxLineLength) {
+		this.maxLineLength = Math.max(0, maxLineLength);
+	}
+
+	/**
+	 * @return the most bytes readLine() accepts in a line (0 = no limit).
+	 */
+	public int getMaxLineLength() {
+		return maxLineLength;
+	}
+
+	/**
+	 * Throw if the line read so far is over the limit.
+	 * @param slack bytes allowed over the limit (a CR that may turn out to be part of the terminator).
+	 */
+	private void checkLength(int slack) throws LineTooLongException {
+		int max = maxLineLength;
+		if( max > 0 && lineLen > max + slack ) {
+			lineLen = 0;
+			if( line.length > DEFAULT_BUFFER_SIZE * 4 ) {
+				line = new byte[128];
+			}
+			throw new LineTooLongException(max);
+		}
+	}
 
 	/**
 	 * @return the Charset used to convert the bytes of a line to a String.
@@ -139,6 +178,7 @@ public abstract class AbstractLineReader extends FilterInputStream implements IL
 				//  No LF in the buffer, keep everything and read more.
 				appendToLine(buf, start, limit - start);
 				pos = limit;
+				checkLength(crlf ? 1 : 0);
 			} else {
 				appendToLine(buf, start, idx - start);
 				pos = idx + 1;
@@ -151,6 +191,7 @@ public abstract class AbstractLineReader extends FilterInputStream implements IL
 					//  A lone LF is part of a CRLF terminated line
 					appendToLine(buf, idx, 1);
 				}
+				checkLength(terminated ? 0 : 1);
 			}
 		}
 
@@ -163,6 +204,7 @@ public abstract class AbstractLineReader extends FilterInputStream implements IL
 		if( !terminated && crlf && lineLen > 0 && line[lineLen - 1] == CR ) {
 			lineLen--;
 		}
+		checkLength(0);
 
 		bytes += lineLen;
 		String ret = new String(line, 0, lineLen, charset);
