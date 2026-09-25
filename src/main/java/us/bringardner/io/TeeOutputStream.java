@@ -30,62 +30,101 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.util.Objects;
 
+/**
+ * Write the same data to several OutputStreams.
+ * <p>
+ * Every operation is attempted on every stream, even if one of them fails.
+ * The first IOException is thrown after all streams have been processed, 
+ * with any later ones added as suppressed exceptions.
+ */
 public class   TeeOutputStream extends OutputStream {
 	OutputStream [] streams;
 	
 	public TeeOutputStream(OutputStream ... args) {
-		streams = args;
-		
+		Objects.requireNonNull(args, "streams are required");
+		streams = args.clone();
+		for (int idx = 0; idx < streams.length; idx++) {
+			Objects.requireNonNull(streams[idx], "stream "+idx+" is null");
+		}
+	}
+
+	private interface StreamOp {
+		void apply(OutputStream out) throws IOException;
+	}
+
+	private void forEach(StreamOp op) throws IOException {
+		IOException error = null;
+		for(OutputStream out : streams) {
+			try {
+				op.apply(out);
+			} catch (IOException | RuntimeException e) {
+				IOException ioe = e instanceof IOException ? (IOException)e : new IOException(e);
+				if( error == null ) {
+					error = ioe;
+				} else {
+					error.addSuppressed(ioe);
+				}
+			}
+		}
+		if( error != null ) {
+			throw error;
+		}
 	}
 
 
 	/**
-	 * Implementation for parent's abstract write method.  
-	 * This writes out the passed in character to the both,
-	 * the chained stream and "tee" stream.
+	 * Write a single byte to all streams.
+	 * 
+	 * @param c
+	 * @throws IOException
 	 */
 
 	public void write(int c) throws IOException	{
-		for(OutputStream out : streams) {
-			out.write(c);
-		}
+		forEach(out -> out.write(c));
 	}
 	
 	@Override
 	public void write(byte[] b) throws IOException {
-		for(OutputStream out : streams) {
-			out.write(b);
-		}
-		
+		forEach(out -> out.write(b));
 	}
 
 	@Override
 	public void write(byte[] b, int off, int len) throws IOException {
-		for(OutputStream out : streams) {
-			out.write(b,off,len);
-		}		
+		forEach(out -> out.write(b,off,len));
 	}
 
 	/**
-	 * Closes both, chained and tee, streams.
+	 * Flush and close all of the streams.
 	 */
 	public void close() throws IOException	{
-		flush();
-		for(OutputStream out : streams) {
-			out.close();
+		IOException error = null;
+		try {
+			flush();
+		} catch (IOException e) {
+			error = e;
+		}
+		try {
+			forEach(OutputStream::close);
+		} catch (IOException e) {
+			if( error == null ) {
+				error = e;
+			} else {
+				error.addSuppressed(e);
+			}
+		}
+		if( error != null ) {
+			throw error;
 		}
 	}
 
 
 	/**
-	 * Flushes chained stream; the tee stream is flushed 
-	 * each time a character is written to it.
+	 * Flush all of the streams.
 	 */
 	public void flush() throws IOException	{
-		for(OutputStream out : streams) {
-			out.flush();
-		}
+		forEach(OutputStream::flush);
 	}
 
 
@@ -102,5 +141,3 @@ public class   TeeOutputStream extends OutputStream {
 		pw.close();
 	}
 }
-
-

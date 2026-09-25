@@ -29,18 +29,38 @@ import java.io.EOFException;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.RandomAccessFile;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Objects;
 
 /**
  * ContinuosInputStream will read data until EOF then it will wait for addition data to
  * arrive instead of ending the read.
  * It's Useful when debugging or monitoring processes. Think tail -f
+ * <p>
+ * The stream ends (read returns -1) only after {@link #setEof(boolean)} or {@link #close()}
+ * is called, and any data that is already in the file has been read.
+ * If the file is truncated (e.g. log rotation by copy / truncate), reading restarts at the beginning of the file.
+ * If the reading thread is interrupted while waiting for data an {@link InterruptedIOException} is thrown.
  */
 public class ContinuosInputStream extends java.io.InputStream {
-	private RandomAccessFile in ;
-	private long fileSize;
-	private boolean eof = false;
-	private int freq=40;
+	private static final int BUFFER_SIZE = 8 * 1024;
+
+	private final RandomAccessFile in ;
+	private final byte [] buf = new byte[BUFFER_SIZE];
+	private int pos;
+	private int limit;
+	//  File position of the next byte that will be read from the file (i.e. just past buf[limit-1])
+	private long filePos;
+
+	//  Set by other threads, so they must be volatile.
+	private volatile boolean eof = false;
+	private volatile boolean closed = false;
+	private volatile int freq=40;
+	private volatile Charset charset = StandardCharsets.UTF_8;
 
 	
 
@@ -56,13 +76,14 @@ public class ContinuosInputStream extends java.io.InputStream {
 	 */
 	public ContinuosInputStream(RandomAccessFile in, boolean seekToEnd)	throws IOException	{
 		super();
-		this.in = in;
+		this.in = Objects.requireNonNull(in, "in is required");
 
 		if( seekToEnd) {
-			fileSize = in.length();
-			in.seek(fileSize);
+			filePos = in.length();
+		} else {
+			filePos = in.getFilePointer();
 		}
-
+		in.seek(filePos);
 	}
 
 	/**
@@ -72,15 +93,20 @@ public class ContinuosInputStream extends java.io.InputStream {
 		this(new RandomAccessFile(fileName,"r"),seekToEnd);
 	}
 
+	/**
+	 * Close the file.  A thread blocked in read() will return -1 (EOF).
+	 * Note: this method is not synchronized so it can be called while another thread is waiting for data.
+	 */
 	public void close()	throws IOException	{
 		eof=true;
+		closed = true;
 		in.close();
 	}
 
 	/**
 	 * 
 	 * Creation date: (1/14/03 7:44:33 AM)
-	 * @return int
+	 * @return int the number of milliseconds to wait before checking for more data.
 	 */
 	public int getFreq() {
 		return freq;
@@ -94,6 +120,21 @@ public class ContinuosInputStream extends java.io.InputStream {
 	public boolean isEof() {
 		return eof;
 	}
+
+	/**
+	 * @return the Charset used by readLine to convert bytes to a String (default is UTF-8).
+	 */
+	public Charset getCharset() {
+		return charset;
+	}
+
+	/**
+	 * @param charset the Charset used by readLine to convert bytes to a String.
+	 */
+	public void setCharset(Charset charset) {
+		this.charset = Objects.requireNonNull(charset, "charset is required");
+	}
+
 	/**
 	 * Starts the application.
 	 * @param args an array of command-line arguments
@@ -111,19 +152,62 @@ public class ContinuosInputStream extends java.io.InputStream {
 			System.exit(-1);
 		}
 
-		ContinuosInputStream buf = new ContinuosInputStream(fileName,true);
-
-
-		String line = null;
-
-
-		while( ( line=buf.readLine()) != null ) {
-			System.out.println("line='"+line+"'");
+		try(ContinuosInputStream buf = new ContinuosInputStream(fileName,true)) {
+			String line = null;
+			while( ( line=buf.readLine()) != null ) {
+				System.out.println("line='"+line+"'");
+			}
+		} catch (EOFException e) {
+			//  Normal end
 		}
+	}
 
-		buf.close();
+	/**
+	 * Make sure there is data in the buffer, waiting for more data to be written to the file if needed.
+	 * 
+	 * @return false if EOF (setEof(true) or close() was called and there is no more data).
+	 */
+	private boolean fill() throws IOException {
+		while( pos >= limit ) {
+			if( closed ) {
+				return false;
+			}
+			try {
+				long len = in.length();
+				if( len < filePos ) {
+					//  The file was truncated, start over from the beginning.
+					filePos = 0;
+				}
+				if( len > filePos ) {
+					in.seek(filePos);
+					int n = in.read(buf, 0, (int)Math.min(buf.length, len - filePos));
+					if( n > 0 ) {
+						pos = 0;
+						limit = n;
+						filePos += n;
+						return true;
+					}
+				}
+			} catch (IOException e) {
+				if( closed ) {
+					//  Closed by another thread while we were reading.
+					return false;
+				}
+				throw e;
+			}
 
+			if( eof ) {
+				return false;
+			}
 
+			try { 
+				Thread.sleep(freq); 
+			} catch(InterruptedException ex) {
+				Thread.currentThread().interrupt();
+				throw new InterruptedIOException("Interrupted while waiting for data");
+			}
+		}
+		return true;
 	}
 	
 	/**
@@ -134,22 +218,38 @@ public class ContinuosInputStream extends java.io.InputStream {
 	 * blocks until input data is available, the end of the stream is detected,
 	 * or an exception is thrown.
 	 *
-	 * <p> A subclass must provide an implementation of this method.
-	 *
 	 * @return     the next byte of data, or <code>-1</code> if the end of the
 	 *             stream is reached.
 	 * @exception  IOException  if an I/O error occurs.
 	 */
-	public int read() throws java.io.IOException	{
-
-		while( !eof && in.getFilePointer() == in.length() ) {
-			try { Thread.sleep(freq); } catch(Exception ex) {}
-			if( eof ) {
-				return -1;
-			}
+	public synchronized int read() throws java.io.IOException	{
+		if( !fill() ) {
+			return -1;
 		}
+		return buf[pos++] & 0xff;
+	}
 
-		return in.read();
+	@Override
+	public int read(byte[] b) throws IOException {
+		return read(b, 0, b.length);
+	}
+
+	/**
+	 * Read up to len bytes, blocking until at least one byte is available (or EOF).
+	 */
+	@Override
+	public synchronized int read(byte[] b, int off, int len) throws IOException {
+		Objects.checkFromIndexSize(off, len, b.length);
+		if( len == 0 ) {
+			return 0;
+		}
+		if( !fill() ) {
+			return -1;
+		}
+		int n = Math.min(len, limit - pos);
+		System.arraycopy(buf, pos, b, off, n);
+		pos += n;
+		return n;
 	}
 
 	public long getInputLength() {
@@ -161,47 +261,92 @@ public class ContinuosInputStream extends java.io.InputStream {
 		return ret;
 	}
 	
+	/**
+	 * Position the stream so the next read will return the last 'want' lines of the file (think tail -n).
+	 * A newline at the very end of the file does not start a new line.
+	 * 
+	 * @param want number of lines 
+	 * @throws IOException
+	 */
 	public synchronized void unreadLines(int want) throws IOException {
+		long len = in.length();
+		long start = len;
 
-		long pos = in.length();
-		int found = 0;
-		while(pos > 0 && found < want) {
-			in.seek(pos--);
-			if(in.read() == '\n'){
-				found++;
+		if( want > 0 && len > 0 ) {
+			long end = len;
+			in.seek(len - 1);
+			if( in.read() == '\n' ) {
+				end--;
+			}
+			start = 0;
+			int found = 0;
+			byte [] tmp = new byte[BUFFER_SIZE];
+			boolean done = false;
+			//  Scan backwards, one block at a time.
+			for(long blockEnd = end; blockEnd > 0 && !done; ) {
+				int n = (int)Math.min(tmp.length, blockEnd);
+				long blockStart = blockEnd - n;
+				in.seek(blockStart);
+				in.readFully(tmp, 0, n);
+				for(int idx = n - 1; idx >= 0; idx--) {
+					if( tmp[idx] == '\n' && ++found == want ) {
+						start = blockStart + idx + 1;
+						done = true;
+						break;
+					}
+				}
+				blockEnd = blockStart;
 			}
 		}
+
+		//  Discard anything in the buffer and read from the new position.
+		pos = limit = 0;
+		filePos = start;
+		in.seek(start);
 	}
 
-	public synchronized String readLine()	throws EOFException	{
-		StringBuffer ret = new StringBuffer();
+	/**
+	 * Read a line of text (terminated by LF, a CR before the LF is removed).
+	 * If EOF is reached the partial line is returned.
+	 * 
+	 * @return the next line
+	 * @throws EOFException if EOF is reached before any data is read.
+	 * @throws IOException if there is an error reading the file (or the thread is interrupted).
+	 */
+	public synchronized String readLine()	throws IOException	{
+		byte [] line = new byte[128];
 		int sz = 0;
-		int c = 0;
+		boolean gotData = false;
 
-		try {
-
-			while( (c = read()) != -1 ) {
-				if(c == '\n' ) {
-					break;
-				} else {
-					ret.append((char)c);
-					sz++;
-				}
+		while( fill() ) {
+			gotData = true;
+			int start = pos;
+			int idx = start;
+			while( idx < limit && buf[idx] != '\n' ) {
+				idx++;
 			}
-		} catch(IOException ex) {
-			ex.printStackTrace();
+			int n = idx - start;
+			if( sz + n > line.length ) {
+				line = Arrays.copyOf(line, Math.max(sz + n, line.length * 2));
+			}
+			System.arraycopy(buf, start, line, sz, n);
+			sz += n;
+			if( idx < limit ) {
+				pos = idx + 1;
+				break;
+			}
+			pos = limit;
 		}
 
-		if( c == -1 && sz == 0 ) {
+		if( !gotData ) {
 			throw new EOFException();
 		}
 
-		if( sz > 0 && ret.charAt(sz-1) == '\r') {
-			ret.deleteCharAt(sz-1);
+		if( sz > 0 && line[sz-1] == '\r') {
+			sz--;
 		}
 
-
-		return ret.toString();
+		return new String(line, 0, sz, charset);
 	}
 
 
@@ -217,15 +362,27 @@ public class ContinuosInputStream extends java.io.InputStream {
 	/**
 	 * 
 	 * Creation date: (1/14/03 7:44:33 AM)
-	 * @param newFreq int
+	 * @param newFreq int number of milliseconds to wait before checking for more data (must be > 0).
 	 */
 	public void setFreq(int newFreq) {
+		if( newFreq <= 0 ) {
+			throw new IllegalArgumentException("freq must be > 0");
+		}
 		freq = newFreq;
 	}
 
 	
+	/**
+	 * @return the number of bytes that can be read without waiting (capped at Integer.MAX_VALUE).
+	 * This method is not synchronized (so it doesn't wait for a blocked read), the result is an estimate
+	 * if another thread is reading at the same time.
+	 */
 	public int available() throws IOException {		
-		return (int)(in.length()-in.getFilePointer());
+		if( closed ) {
+			return 0;
+		}
+		long ret = (long)(limit - pos) + Math.max(0, in.length() - filePos);
+		return (int)Math.min(Integer.MAX_VALUE, ret);
 	}
 
 

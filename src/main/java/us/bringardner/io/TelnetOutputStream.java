@@ -21,12 +21,16 @@
 package us.bringardner.io;
 
 import java.io.*;
+import java.util.Objects;
 /**
  * 
  * Creation date: (11/8/01 8:41:37 AM)
  * @author: Tony Bringardner
  */
 public class TelnetOutputStream extends OutputStream {
+	/** The highest character that is transmitted. */
+	public static final int MAX_CHAR = 'z';
+
 	private OutputStream out;
 	/**
 	 * TelnetOutputStream constructor comment.
@@ -42,9 +46,9 @@ public class TelnetOutputStream extends OutputStream {
 	 * to the output stream. 
 	 * 
 	 * While the telnet protocol is more complicated (see RFC 206),
-	 * but the only thing the output stream does is make sure nothing > 'Z'
+	 * the only thing the output stream does is make sure nothing > 'z' (0x7A)
 	 * is output (transmitted).
-	 * First the byte is restricted to the first 7 bits then if it's > 'Z' it's ignored.
+	 * First the byte is restricted to the first 7 bits then if it's > 'z' it's ignored.
 	 * 
 	 *
 	 * @param      b   the <code>byte</code>.
@@ -53,10 +57,46 @@ public class TelnetOutputStream extends OutputStream {
 	 *             output stream has been closed.
 	 */
 	public void write(int b) throws IOException {
-		int b1 = b & 0b1111111;
+		int b1 = b & 0x7F;
 		
-		if( b1 <= 'Z') {
+		if( b1 <= MAX_CHAR) {
 			out.write(b1);
+		}
+	}
+
+	/**
+	 * Filter the bytes and write them with a single call to the underlying stream.
+	 */
+	@Override
+	public void write(byte[] b, int off, int len) throws IOException {
+		Objects.checkFromIndexSize(off, len, b.length);
+		byte [] tmp = new byte[len];
+		int cnt = 0;
+		for (int idx = off; idx < off+len; idx++) {
+			int b1 = b[idx] & 0x7F;
+			if( b1 <= MAX_CHAR) {
+				tmp[cnt++] = (byte)b1;
+			}
+		}
+		if( cnt > 0 ) {
+			out.write(tmp, 0, cnt);
+		}
+	}
+
+	@Override
+	public void flush() throws IOException {
+		out.flush();
+	}
+
+	/**
+	 * Flush and close the underlying stream.
+	 */
+	@Override
+	public void close() throws IOException {
+		try {
+			out.flush();
+		} finally {
+			out.close();
 		}
 	}
 }

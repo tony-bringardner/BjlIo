@@ -27,7 +27,14 @@ package us.bringardner.io;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Objects;
 
+/**
+ * An InputStream that reports progress to an {@link IStreamMonitor}.
+ * <p>
+ * start() is called before the first byte is counted, update(total, blockSize) is called each time
+ * the total crosses a multiple of blockSize and complete(total) is called once, at EOF or close.
+ */
 public class MonitoredInputStream extends InputStream {
 
 	
@@ -37,10 +44,12 @@ public class MonitoredInputStream extends InputStream {
 	long totalRead=0;
 	long blockSize = (4*1024);
 	boolean completed=false;
+	private boolean started=false;
+	private long markedTotal = -1;
 	
 	public MonitoredInputStream(InputStream input, IStreamMonitor monitor) {
 		if( input == null || monitor == null ) {
-			throw new RuntimeException("Both input and monitor are required");
+			throw new IllegalArgumentException("Both input and monitor are required");
 		}
 		this.target = input;
 		this.monitor = monitor;
@@ -48,6 +57,9 @@ public class MonitoredInputStream extends InputStream {
 	
 	public MonitoredInputStream(InputStream input,long blockSize, IStreamMonitor monitor) {
 		this(input, monitor);
+		if( blockSize <= 0 ) {
+			throw new IllegalArgumentException("blockSize must be > 0");
+		}
 		this.blockSize = blockSize;
 	}
 	
@@ -65,10 +77,16 @@ public class MonitoredInputStream extends InputStream {
 			return false;
 		}
 	}
+
+	@Override
+	public int hashCode() {
+		return target.hashCode();
+	}
 	
 	@Override
 	public synchronized void mark(int readlimit) {
 		target.mark(readlimit);
+		markedTotal = totalRead;
 	}
 	@Override
 	public boolean markSupported() {
@@ -78,11 +96,17 @@ public class MonitoredInputStream extends InputStream {
 	@Override
 	public synchronized void reset() throws IOException {
 		target.reset();
+		//  Bytes read after the mark will be read again, don't count them twice.
+		if( markedTotal >= 0 ) {
+			totalRead = markedTotal;
+		}
 	}
 	
 	@Override
 	public long skip(long n) throws IOException {
-		return target.skip(n);
+		long ret = target.skip(n);
+		addToTotal(ret);
+		return ret;
 	}
 	
 	@Override
@@ -92,35 +116,44 @@ public class MonitoredInputStream extends InputStream {
 	
 	@Override
 	public int read(byte[] b) throws IOException {
-		int ret = read(b,0,b.length);
-		return ret;
+		return read(b,0,b.length);
 	}
 	
-	private void addToTotal(int count) {
-		if(totalRead==0) {
+	private void addToTotal(long count) {
+		if( count <= 0 ) {
+			return;
+		}
+		if(!started) {
+			started = true;
 			monitor.start();			
 		}
-		if(count >=0 && (totalRead+= count) % blockSize == 0l) {
-			monitor.update(totalRead, blockSize);
-		}		
+		long before = totalRead;
+		totalRead += count;
+		//  Report every block boundary that was crossed (same calls as when data is read one byte at a time).
+		for(long block = (before / blockSize + 1) * blockSize; block <= totalRead; block += blockSize) {
+			monitor.update(block, blockSize);
+		}
+	}
+
+	private void complete() {
+		if( !completed) {
+			completed = true;
+			monitor.complete(totalRead);
+		}
 	}
 
 	@Override
 	public int read(byte[] b, int off, int len) throws IOException {
-		int ret = 0;
-		for (int idx = off; idx < len; idx++) {
-			int i = read();
-			if( i < 0) {
-				if( idx == off) {
-					return -1;
-				}
-				break;
-			} else {
-				b[idx] = (byte)i;
-				ret++;
-			}
+		Objects.checkFromIndexSize(off, len, b.length);
+		if( len == 0 ) {
+			return 0;
 		}
-		
+		int ret = target.read(b, off, len);
+		if( ret < 0 ) {
+			complete();
+		} else {
+			addToTotal(ret);
+		}
 		return ret;
 	}
 	
@@ -130,20 +163,17 @@ public class MonitoredInputStream extends InputStream {
 		if( ret >= 0 ) {
 			addToTotal(1);
 		} else {
-			if( !completed) {
-				monitor.complete(totalRead);
-				completed = true;
-			}
+			complete();
 		}
 		return ret;
 	}
 	
 	@Override
 	public void close() throws IOException {
-		target.close();
-		if( !completed) {
-			monitor.complete(totalRead);
-			completed = true;
+		try {
+			target.close();
+		} finally {
+			complete();
 		}
 	}
 

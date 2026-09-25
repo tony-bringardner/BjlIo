@@ -25,24 +25,36 @@
  */
 package us.bringardner.io.test;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.EOFException;
 import java.io.File;
-import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintStream;
 import java.io.PrintWriter;
+import java.io.RandomAccessFile;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import us.bringardner.core.BaseThread;
 import us.bringardner.io.CRLFLineReader;
@@ -64,63 +76,152 @@ class TestIo {
 	String testLine = "Test line";
 	int lineCount = 10;
 
+	@TempDir
+	File tempDir;
 
 	@Test
-	void testContinuosInputStream() throws FileNotFoundException, IOException {
-		/**
-		 * 
-		 */
-		File dir = new File("target").getCanonicalFile();
-		assertTrue(dir.exists(),"Test dir does not exist");
-		File file = new File(dir,"ContinuousIOTestFile.txt").getCanonicalFile();
+	void testContinuosInputStream() throws Exception {
+		File file = new File(tempDir,"ContinuousIOTestFile.txt");
+		//  Create the file before the reader opens it.
+		PrintStream out = new PrintStream(file);
 		BaseThread thread = new BaseThread() {
 
 			@Override
 			public void run() {
+				//  add data to the file every 50ms
+				started = running = true;
 				try {
-					PrintStream out = new PrintStream(file);
-					//  add data to the file every second
-					started = running = true;
 					int cnt = 0;
 					while(!stopping) {						
-						out.println("line "+(cnt++)+". ");
-						Thread.sleep(100);
+						out.print("line "+(cnt++)+". \n");
+						out.flush();
+						Thread.sleep(50);
 					}
-
+				} catch (InterruptedException e) {
+					//  stop(timeout,true) interrupts the sleep
+				} finally {
 					out.close();
-
-				} catch (Throwable e) {
+					running = false;
 				}
-				running = false;
 			}
 
 		};
 		thread.start();
-		try {
-			// give the thread a little time to create the file
-			Thread.sleep(100);
-		} catch (InterruptedException e) {
-			// Not implemented
-			e.printStackTrace();
-		}
-		ContinuosInputStream in = new ContinuosInputStream(file,false);
-		String line = null;
-		int cnt = 0;
-		try {
-			while( ( line=in.readLine()) != null ) {
-				//System.out.println(String.format("%d = %s", cnt,line));
-				assertEquals("line "+(cnt++)+". ", line,"");
-				if(cnt > 6) {
-					thread.stop();
-					in.close();
-					break;
+		
+		assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
+			try(ContinuosInputStream in = new ContinuosInputStream(file,false)) {
+				for(int cnt=0; cnt < 7; cnt++ ) {
+					assertEquals("line "+cnt+". ", in.readLine());
 				}
+			} finally {
+				assertTrue(thread.stop(5000, true),"Writer thread did not stop");
 			}
-		}catch (IOException e) {
-			assertEquals(6, cnt,"ContinuosInputStream did not make all it's turns. ");
+		});
+	}
+
+	@Test
+	void testContinuosInputStreamEofAfterDataIsRead() throws IOException {
+		File file = new File(tempDir,"eof.txt");
+		Files.write(file.toPath(), "a\r\nb\nlast".getBytes(StandardCharsets.UTF_8));
+		try(ContinuosInputStream in = new ContinuosInputStream(file,false)) {
+			in.setEof(true);
+			assertEquals("a", in.readLine());
+			assertEquals("b", in.readLine());
+			assertEquals("last", in.readLine(),"Partial last line should be returned at EOF");
+			assertThrows(EOFException.class, in::readLine);
+		}
+	}
+
+	@Test
+	void testContinuosInputStreamUnreadLines() throws IOException {
+		File file = new File(tempDir,"tail.txt");
+		Files.write(file.toPath(), "l1\nl2\nl3\n".getBytes(StandardCharsets.UTF_8));
+		try(ContinuosInputStream in = new ContinuosInputStream(file,true)) {
+			in.setEof(true);
+			in.unreadLines(2);
+			assertEquals("l2", in.readLine());
+			assertEquals("l3", in.readLine());
+			assertThrows(EOFException.class, in::readLine);
+
+			in.unreadLines(10);
+			assertEquals("l1", in.readLine(),"Asking for more lines than the file has should start at the beginning");
 		}
 
-		in.close();
+		//  Larger than the internal buffer, lines spanning block boundaries
+		StringBuilder big = new StringBuilder();
+		for(int idx=0; idx < 5000; idx++ ) {
+			big.append("line number ").append(idx).append('\n');
+		}
+		Files.write(file.toPath(), big.toString().getBytes(StandardCharsets.UTF_8));
+		try(ContinuosInputStream in = new ContinuosInputStream(file,true)) {
+			in.setEof(true);
+			in.unreadLines(3000);
+			for(int idx=2000; idx < 5000; idx++ ) {
+				assertEquals("line number "+idx, in.readLine());
+			}
+			assertThrows(EOFException.class, in::readLine);
+		}
+	}
+
+	@Test
+	void testContinuosInputStreamTruncatedFile() throws Exception {
+		File file = new File(tempDir,"truncate.txt");
+		Files.write(file.toPath(), "old line 1\nold line 2\n".getBytes(StandardCharsets.UTF_8));
+		assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
+			try(ContinuosInputStream in = new ContinuosInputStream(file,false)) {
+				in.setFreq(10);
+				assertEquals("old line 1", in.readLine());
+				assertEquals("old line 2", in.readLine());
+				//  truncate (log rotation) and write new data
+				try(RandomAccessFile raf = new RandomAccessFile(file, "rw")) {
+					raf.setLength(0);
+					raf.write("new\n".getBytes(StandardCharsets.UTF_8));
+				}
+				assertEquals("new", in.readLine());
+			}
+		});
+	}
+
+	@Test
+	void testContinuosInputStreamCloseAndInterrupt() throws Exception {
+		File file = new File(tempDir,"block.txt");
+		Files.write(file.toPath(), new byte[0]);
+
+		//  close() from another thread ends a blocked read
+		try(ContinuosInputStream in = new ContinuosInputStream(file,false)) {
+			AtomicReference<Object> result = new AtomicReference<>();
+			Thread reader = new Thread(() -> {
+				try {
+					result.set(in.read());
+				} catch (Throwable e) {
+					result.set(e);
+				}
+			});
+			reader.start();
+			Thread.sleep(200);
+			in.close();
+			reader.join(5000);
+			assertTrue(!reader.isAlive(),"close did not end the blocked read");
+			assertEquals(-1, result.get());
+		}
+
+		//  interrupt ends a blocked read with InterruptedIOException
+		try(ContinuosInputStream in = new ContinuosInputStream(file,false)) {
+			AtomicReference<Object> result = new AtomicReference<>();
+			Thread reader = new Thread(() -> {
+				try {
+					result.set(in.readLine());
+				} catch (Throwable e) {
+					result.set(e);
+				}
+			});
+			reader.start();
+			Thread.sleep(200);
+			reader.interrupt();
+			reader.join(5000);
+			assertTrue(!reader.isAlive(),"interrupt did not end the blocked read");
+			assertTrue(result.get() instanceof InterruptedIOException,"Expected InterruptedIOException but got "+result.get());
+		}
 	}
 
 
@@ -171,6 +272,7 @@ class TestIo {
 	}
 
 
+	@Test
 	public void testLineReadAndWrite () throws IOException {
 
 
@@ -205,6 +307,126 @@ class TestIo {
 
 	}
 
+	@Test
+	public void testLastLineWithoutTerminator() throws IOException {
+		try(LFLineReader r = new LFLineReader("first\nlast-no-newline")) {
+			assertEquals("first", r.readLine());
+			assertEquals("last-no-newline", r.readLine());
+			assertNull(r.readLine());
+		}
+		try(CRLFLineReader r = new CRLFLineReader("first\r\nlast-no-newline")) {
+			assertEquals("first", r.readLine());
+			assertEquals("last-no-newline", r.readLine());
+			assertNull(r.readLine());
+		}
+		//  Empty lines are returned as "", EOF as null
+		try(LFLineReader r = new LFLineReader("\n\n")) {
+			assertEquals("", r.readLine());
+			assertEquals("", r.readLine());
+			assertNull(r.readLine());
+		}
+		try(CRLFLineReader r = new CRLFLineReader("")) {
+			assertNull(r.readLine());
+		}
+	}
+
+	@Test
+	public void testCrlfReaderKeepsLoneCrAndLf() throws IOException {
+		try(CRLFLineReader r = new CRLFLineReader("a\nb\rc\r\nd\r\r\n\r\n")) {
+			assertEquals("a\nb\rc", r.readLine());
+			assertEquals("d\r", r.readLine());
+			assertEquals("", r.readLine());
+			assertNull(r.readLine());
+		}
+	}
+
+	@Test
+	public void testLongLinesAcrossBufferBoundaries() throws IOException {
+		//  Put the CR / LF at every possible position around the 4K buffer boundaries.
+		for(int len = 4090; len < 4100; len++ ) {
+			char [] chars = new char[len];
+			java.util.Arrays.fill(chars, 'x');
+			String longLine = new String(chars);
+			String data = longLine+"\r\n"+longLine+"\r\nend";
+			try(CRLFLineReader r = new CRLFLineReader(data)) {
+				assertEquals(longLine, r.readLine(),"len="+len);
+				assertEquals(longLine, r.readLine(),"len="+len);
+				assertEquals("end", r.readLine());
+				assertNull(r.readLine());
+			}
+		}
+	}
+
+	@Test
+	public void testNonAsciiRoundTrip() throws IOException {
+		String text = "café über 日本";
+		for(boolean crlf : new boolean[] {true,false}) {
+			ByteArrayOutputStream bo = new ByteArrayOutputStream();
+			try(ILineWriter w = crlf ? new CRLFLineWriter(bo) : new LFLineWriter(bo)) {
+				w.writeLine(text);
+			}
+			assertArrayEquals((text+(crlf ? "\r\n" : "\n")).getBytes(StandardCharsets.UTF_8), bo.toByteArray(),"Writer must use UTF-8");
+			InputStream bi = new ByteArrayInputStream(bo.toByteArray());
+			try(ILineReader r = crlf ? new CRLFLineReader(bi) : new LFLineReader(bi)) {
+				assertEquals(text, r.readLine());
+			}
+		}
+
+		//  A different charset can be used
+		byte [] latin1 = "café\r\n".getBytes(StandardCharsets.ISO_8859_1);
+		try(CRLFLineReader r = new CRLFLineReader(new ByteArrayInputStream(latin1), StandardCharsets.ISO_8859_1)) {
+			assertEquals("café", r.readLine());
+		}
+		ByteArrayOutputStream bo = new ByteArrayOutputStream();
+		try(CRLFLineWriter w = new CRLFLineWriter(bo, StandardCharsets.ISO_8859_1)) {
+			w.writeLine("café");
+		}
+		assertArrayEquals(latin1, bo.toByteArray());
+	}
+
+	@Test
+	public void testReaderMixedReadAndReadLine() throws IOException {
+		try(LFLineReader r = new LFLineReader("abc\ndef\nghi")) {
+			assertEquals('a', r.read());
+			assertEquals("bc", r.readLine());
+			byte [] b = new byte[10];
+			int n = r.read(b, 2, 3);
+			assertEquals(3, n);
+			assertEquals("def", new String(b, 2, 3, StandardCharsets.UTF_8));
+			assertEquals("", r.readLine());
+			assertEquals("ghi", r.readLine());
+			assertEquals(-1, r.read());
+		}
+	}
+
+	@Test
+	public void testWriterCountsAllBytes() throws IOException {
+		ByteArrayOutputStream bo = new ByteArrayOutputStream();
+		try(CRLFLineWriter w = new CRLFLineWriter(bo)) {
+			w.writeLine("abc");			// 5
+			w.write("de");				// 2
+			w.write("0123456789".getBytes(), 5, 3);	// 3
+			w.write('x');				// 1
+			assertEquals(11, w.getBytesOut());
+			assertTrue(w.getLastWriteTime() > 0);
+		}
+		assertEquals("abc\r\nde567x", bo.toString());
+	}
+
+	@Test
+	public void testFileWriterIsBuffered() throws IOException {
+		File file = new File(tempDir,"lines.txt");
+		try(LFLineWriter w = new LFLineWriter(file)) {
+			assertTrue(!w.isAutoFlush(),"File output should not auto flush");
+			for(int idx=0; idx < 1000; idx++ ) {
+				w.writeLine("line "+idx);
+			}
+		}
+		List<String> lines = Files.readAllLines(file.toPath(), StandardCharsets.UTF_8);
+		assertEquals(1000, lines.size());
+		assertEquals("line 999", lines.get(999));
+	}
+
 
 	@Test
 	public void testTeeOutputStream() throws IOException {
@@ -237,6 +459,72 @@ class TestIo {
 	}
 
 	@Test
+	public void testTeeOutputStreamOneStreamFails() throws IOException {
+		class Failing extends OutputStream {
+			boolean closed;
+			@Override
+			public void write(int b) throws IOException {
+				throw new IOException("write failed");
+			}
+			@Override
+			public void close() throws IOException {
+				closed = true;
+				throw new IOException("close failed");
+			}
+		}
+		Failing bad = new Failing();
+		ByteArrayOutputStream good = new ByteArrayOutputStream();
+		File file = new File(tempDir,"tee.txt");
+		FileOutputStream fos = new FileOutputStream(file);
+		TeeOutputStream tee = new TeeOutputStream(bad, good, fos);
+
+		IOException e = assertThrows(IOException.class, () -> tee.write("data".getBytes()));
+		assertEquals("write failed", e.getMessage());
+		assertEquals("data", good.toString(),"Other streams must still be written");
+
+		assertThrows(IOException.class, tee::close);
+		assertTrue(bad.closed);
+		//  The FileOutputStream was closed (and flushed) even though an earlier stream failed.
+		assertEquals("data", new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8));
+		assertThrows(IOException.class, () -> fos.write(1),"FileOutputStream should be closed");
+	}
+
+	class TestMonitor implements  IStreamMonitor {
+		String name;
+		boolean debug = false;
+		TestMonitor(String name) {
+			this.name = name;
+		}
+
+		int updateCount = 0;
+		int startCount = 0;
+		int completeCount = 0;
+		long total = 0;
+		List<Long> updates = new ArrayList<>();
+
+		@Override
+		public void update(long total, long transfered) {
+			updateCount++;
+			updates.add(total);
+			if(debug) System.out.println(name+" update total = "+total+" tx="+transfered);				
+		}
+
+		@Override
+		public void start() {
+			if(debug) System.out.println(name+" Starting");
+			startCount++;
+		}
+
+		@Override
+		public void complete(long total) {
+			this.total = total;
+			completeCount++;
+			if(debug) System.out.println(name+" Complete ="+total);				
+		}
+
+	};
+
+	@Test
 	public void testMoniteredStreams() throws IOException {
 		int expectedTotal=1024;
 		long blockSize = 20;
@@ -251,78 +539,74 @@ class TestIo {
 			}
 			buf.append((char)c);
 		}
+		byte [] expected = buf.toString().getBytes(StandardCharsets.US_ASCII);
 
 		ByteArrayOutputStream bo = new ByteArrayOutputStream();
-		boolean debug = false;
-		class TestMonitor implements  IStreamMonitor {
-			String name;
-			TestMonitor(String name) {
-				this.name = name;
-			}
-
-			int updateCount = 0;
-			long total = 0;
-			boolean hasStarted= false;
-
-			@Override
-			public void update(long total, long transfered) {
-				updateCount++;
-				if(debug) System.out.println(name+" update total = "+total+" tx="+transfered);				
-			}
-
-			@Override
-			public void start() {
-				if(debug) System.out.println(name+" Starting");
-				hasStarted = true;
-			}
-
-			@Override
-			public void complete(long total) {
-				this.total = total;
-				if(debug) System.out.println(name+" Complete ="+total);				
-			}
-
-		};
 
 		TestMonitor om = new TestMonitor("Write");
 		MonitoredOutputStream mo = new MonitoredOutputStream(bo,blockSize, om);
-		mo.write(buf.toString().getBytes());		
+		//  Write in odd sized chunks with non zero offsets
+		for(int off=0; off < expected.length; off+=37) {
+			mo.write(expected, off, Math.min(37, expected.length-off));
+		}
 		mo.close();
-		assertTrue(om.hasStarted," Output did not call started");
-		assertEquals(om.updateCount, expectedUpdates,"Output Wrong number of updates in output");
-		assertEquals(om.total, expectedTotal,"Output Wrong total in output");
+		mo.close();
+		assertArrayEquals(expected, bo.toByteArray(),"Output data is wrong");
+		assertEquals(1, om.startCount," Output did not call started once");
+		assertEquals(expectedUpdates, om.updateCount,"Output Wrong number of updates in output");
+		assertEquals(Long.valueOf(blockSize), om.updates.get(0));
+		assertEquals(Long.valueOf(blockSize*expectedUpdates), om.updates.get(expectedUpdates-1));
+		assertEquals(expectedTotal, om.total,"Output Wrong total in output");
+		assertEquals(1, om.completeCount,"complete should only be called once");
 
-		ByteArrayInputStream bi = new ByteArrayInputStream(buf.toString().getBytes());
+		ByteArrayInputStream bi = new ByteArrayInputStream(expected);
 
 		TestMonitor im = new TestMonitor("Read");
 		MonitoredInputStream mi = new MonitoredInputStream(bi,blockSize, im);
-		byte data [] = new byte[buf.length()];
-		int got = mi.read(data);
-		while( got >= 0) {
-			got = mi.read(data,got,data.length-got);
-			if( got < 0 ) {
-				mi.close();
-			}
+		byte data [] = new byte[expected.length+100];
+		int total = 0;
+		int got;
+		//  Read in odd sized chunks with a non zero offset
+		while( (got = mi.read(data, 100+total, Math.min(33, data.length-100-total))) > 0 ) {
+			total += got;
 		}
+		mi.close();
 
-		assertTrue(im.hasStarted,"Read Output did not call started");
-		assertEquals(im.updateCount, expectedUpdates,"Read Wrong number of updates in output");
-		assertEquals(im.total, expectedTotal,"Read Wrong total in output");
+		assertEquals(expectedTotal, total);
+		assertArrayEquals(expected, java.util.Arrays.copyOfRange(data, 100, data.length),"Input data is wrong");
+		assertEquals(1, im.startCount,"Read Output did not call started once");
+		assertEquals(expectedUpdates, im.updateCount,"Read Wrong number of updates in output");
+		assertEquals(expectedTotal, im.total,"Read Wrong total in output");
+		assertEquals(1, im.completeCount,"complete should only be called once");
+	}
 
+	@Test
+	public void testMonitoredStreamsOffsets() throws IOException {
+		ByteArrayOutputStream bo = new ByteArrayOutputStream();
+		try(MonitoredOutputStream mo = new MonitoredOutputStream(bo, new TestMonitor("w"))) {
+			mo.write("0123456789ABCDEF".getBytes(), 10, 6);
+		}
+		assertEquals("ABCDEF", bo.toString());
+
+		try(MonitoredInputStream mi = new MonitoredInputStream(new ByteArrayInputStream("hello world".getBytes()), new TestMonitor("r"))) {
+			byte [] b = new byte[20];
+			assertEquals(5, mi.read(b, 10, 5));
+			assertEquals("hello", new String(b, 10, 5, StandardCharsets.US_ASCII));
+		}
 	}
 
 	@Test
 	public void testTelnetStreams() throws IOException {
 
-		// Telnet output (as described in RFC206) is restricted to characters <= 'Z' (0x7A) 
+		// Telnet output (as described in RFC206) is restricted to characters <= 'z' (0x7A) 
 		ByteArrayOutputStream bao1 =  new ByteArrayOutputStream();
 		List<Byte> expected = new ArrayList<>();
 		try(TelnetOutputStream tno = new TelnetOutputStream(bao1)) {
 			for(int idx=0; idx < 1024; idx++ ) {
 				tno.write(idx);
 				//Note: This is the logic used by TelnetOutputStream
-				int i = idx & 0b1111111;
-				if( i <= 'Z') {
+				int i = idx & 0x7F;
+				if( i <= 'z') {
 					expected.add((byte)i);
 				}
 			}
@@ -335,6 +619,20 @@ class TestIo {
 		for(int idx=0; idx < actualData.length; idx++ ) {			
 			assertEquals(expected.get(idx),actualData[idx],"TelnetOutputStream output does not match expected value.");
 		}
+
+		//  Lower case letters are transmitted, the bulk write gives the same result as single bytes
+		ByteArrayOutputStream bao2 =  new ByteArrayOutputStream();
+		try(TelnetOutputStream tno = new TelnetOutputStream(bao2)) {
+			tno.write("xxHello World\r\n~".getBytes(StandardCharsets.US_ASCII), 2, 13);
+		}
+		assertEquals("Hello World\r\n", bao2.toString());
+
+		//  close flushes and closes the underlying stream
+		ByteArrayOutputStream bao3 =  new ByteArrayOutputStream();
+		TelnetOutputStream tno = new TelnetOutputStream(new java.io.BufferedOutputStream(bao3));
+		tno.write("ABC".getBytes());
+		tno.close();
+		assertEquals("ABC", bao3.toString());
 		
 		StringBuilder buf = new StringBuilder();
 		
@@ -362,6 +660,14 @@ class TestIo {
 		String actualEcho = new String(bao.toByteArray());		
 		assertEquals(buf.toString(),buf2.toString(),"TelnetInputStream input does not match expected value.");
 		assertEquals(buf.toString(),actualEcho,"TelnetInputStream ECHO does not match expected value.");
+
+		//  Bulk reads are echoed too
+		ByteArrayOutputStream echo =  new ByteArrayOutputStream();
+		try(TelnetInputStream in = new TelnetInputStream(new ByteArrayInputStream(buf.toString().getBytes()), echo)){
+			byte [] b = in.readAllBytes();
+			assertEquals(buf.toString(), new String(b));
+		}
+		assertEquals(buf.toString(), echo.toString());
 	}
 
 }

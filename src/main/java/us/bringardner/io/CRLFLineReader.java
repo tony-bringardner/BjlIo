@@ -25,28 +25,24 @@
  */
 package us.bringardner.io;
 
-import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FilterInputStream;
-import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.Charset;
 
 /**
  * @author Tony Bringardner
  * InputStream that reads lines terminated by CRLF pair.
+ * A lone CR or LF is considered part of the line.
  * 
  * Sub-classing FilterInputStream allows this class to be used
  * as an InputStream.  However, it's probably not a good idea since 
  * that would violate the basic assumptions of the protocol.
  *   
  */
-public class CRLFLineReader extends FilterInputStream implements ILineReader,IoConstants {
-
-	private long bytes;
-	private long lastReadTime;
+public class CRLFLineReader extends AbstractLineReader {
 
 	/**
 	 * Construct a CRLFInputStream from a File.
@@ -59,15 +55,35 @@ public class CRLFLineReader extends FilterInputStream implements ILineReader,IoC
 	}
 
 	/**
-	 * Construct a CRLFInputStream from the provided InputStream.
+	 * Construct a CRLFInputStream from a File.
+	 * 
+	 * @param File to read.
+	 * @param charset used to convert bytes to a String.
+	 * @throws FileNotFoundException
+	 */
+	public CRLFLineReader(File inputFile, Charset charset) throws FileNotFoundException {
+		this(new FileInputStream(inputFile), charset);
+	}
+
+	/**
+	 * Construct a CRLFInputStream from the provided InputStream (lines are decoded as UTF-8).
 	 * 
 	 * @param in
 	 */
 	public CRLFLineReader(InputStream in) {
-		super((in instanceof BufferedInputStream) ? in : new BufferedInputStream(in));
+		this(in, DEFAULT_CHARSET);
 	}
 
-	
+	/**
+	 * Construct a CRLFInputStream from the provided InputStream.
+	 * 
+	 * @param in
+	 * @param charset used to convert bytes to a String.
+	 */
+	public CRLFLineReader(InputStream in, Charset charset) {
+		super(in, charset);
+	}
+
 	/**
 	 * Construct a CRLFInputStream that will read lines
 	 * from the provided String.
@@ -75,76 +91,11 @@ public class CRLFLineReader extends FilterInputStream implements ILineReader,IoC
 	 * @param str
 	 */
 	public CRLFLineReader(String str) {
-		this(new ByteArrayInputStream(str.getBytes()));
+		this(new ByteArrayInputStream(str.getBytes(DEFAULT_CHARSET)));
 	}
 
-	
-	/* 
-	 * Close the Stream
-	 * 
-	 * @see java.io.FilterInputStream#close()
-	 */
-	public void close() throws IOException {
-		super.close();
+	@Override
+	protected boolean isCrlfTerminated() {
+		return true;
 	}
-
-	
-	/* 
-	 * @see us.bringardner.io.LineReader#getBytesIn()
-	 */
-	public long getBytesIn() {
-		return bytes;
-	}
-
-	
-	/* 
-	 * Read a line from the input.  The line will include all
-	 * text up to (but NOT including) the next CRLF pair.
-	 * 
-	 * @see us.bringardner.io.LineReader#readLine()
-	 */
-	public String readLine() throws IOException {
-		
-		StringBuffer bf = new StringBuffer();
-		int i = 0;
-		int lst = (int)'\0';
-		boolean done = false;
-		int cnt = 0;
-
-		//  Read until we reach the EOF or a CRLF pair.
-		while (!done && (i = read()) != -1) {
-			if (i == NL && lst == CR) {
-				done = true;
-			} else {
-				cnt++;
-				bf.append((char)i);
-				lst = i;
-			}
-		}
-
-		String ret = null;
-		//  If nothing is read, ret is null.
-		if (cnt > 0) {
-			//  Ignore the CR is we read one (could be EOF and none was read).
-			if( lst == CR ){
-				cnt --;
-			}
-			ret = bf.substring(0,cnt);
-			bytes+=cnt;
-		}
-		
-		
-		lastReadTime=System.currentTimeMillis();
-		return ret;
-	}
-	
-	public int inputAvailable() throws IOException {
-		return super.available();
-	}
-
-	public long getLastReadTime() {
-		
-		return lastReadTime;
-	}
-	
 }

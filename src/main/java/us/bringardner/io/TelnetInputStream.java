@@ -21,6 +21,7 @@
 package us.bringardner.io;
 
 import java.io.*;
+import java.util.Objects;
 /**
  * This is really just a utility to read from a remote stream and echo on a local screen
  * Creation date: (11/8/01 8:31:23 AM)
@@ -49,11 +50,44 @@ public class TelnetInputStream extends InputStream {
 		out = output;	
 	}
 
+	/**
+	 * Close the input and the echo output stream.
+	 */
 	public void close() throws IOException {
-		if( out != null ) {
-			try { out.close(); } catch(Exception ex) {}
+		try {
+			if( out != null ) {
+				try { out.close(); } catch(Exception ex) {}
+			}
+		} finally {
+			in.close();
 		}
-		in.close();
+	}
+
+	@Override
+	public int available() throws IOException {
+		return in.available();
+	}
+
+	@Override
+	public int read(byte[] b) throws IOException {
+		return read(b, 0, b.length);
+	}
+
+	/**
+	 * Read up to len bytes and echo them to the output stream with a single write and flush.
+	 */
+	@Override
+	public int read(byte[] b, int off, int len) throws IOException {
+		Objects.checkFromIndexSize(off, len, b.length);
+		if( len == 0 ) {
+			return 0;
+		}
+		int ret = in.read(b, off, len);
+		if( ret > 0 ) {
+			out.write(b, off, ret);
+			out.flush();
+		}
+		return ret;
 	}
 
 	

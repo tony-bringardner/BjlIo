@@ -45,7 +45,10 @@ public interface IoConstants {
 	
 	
 	/**
-	 * A Carriage Return / Line Feed pair;
+	 * A Carriage Return / Line Feed pair.
+	 * <p>
+	 * NOTE: Java arrays can't be made read-only, so do NOT modify this array.
+	 * The classes in this package use their own private copies.
 	 */
 	public static final byte [] CRNL = new byte [] { '\r','\n'};
 }

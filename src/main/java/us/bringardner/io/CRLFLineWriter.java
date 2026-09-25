@@ -24,31 +24,46 @@ package us.bringardner.io;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.Charset;
 
 /**
- * @author Tony Bringardner
- *
+ *  OutputStream that writes lines terminated with a CRLF pair.
+ * 
  */
 public class CRLFLineWriter extends AbstractLineWriter implements ILineWriter,IoConstants{
 
+	//  Private copy so changes to the public IoConstants.CRNL array can't affect this class.
+	private static final byte [] TERMINATOR = { '\r','\n'};
+
 	/**
-	 * @param out OutputStream to write to
+	 * @param out
 	 */
 	public CRLFLineWriter(OutputStream out) {		
-		super(out, CRNL);
+		super(out, TERMINATOR);
 	}
 
+	public CRLFLineWriter(OutputStream out, Charset charset) {		
+		super(out, TERMINATOR, charset);
+	}
+
+	/**
+	 * Output to a file is buffered and 'Auto Flush' is off.
+	 */
 	public CRLFLineWriter(File outputFile) throws IOException {		
-		super(outputFile, CRNL);
+		super(outputFile, TERMINATOR);
+	}
+
+	public CRLFLineWriter(File outputFile, Charset charset) throws IOException {		
+		super(outputFile, TERMINATOR, charset);
 	}
 
 	/**
 	 * @param outputStream
 	 * @param outBufSize
-	 * @throws IOException 
+	 * @throws IOException
 	 */
 	public CRLFLineWriter(OutputStream outputStream, int outBufSize) throws IOException {
-		super(outputStream,outBufSize,CRNL);
+		super(outputStream,outBufSize,TERMINATOR);
 	}
 
 }

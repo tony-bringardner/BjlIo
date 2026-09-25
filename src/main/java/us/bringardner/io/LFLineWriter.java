@@ -24,32 +24,45 @@ package us.bringardner.io;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.Charset;
 
 /**
- * @author Tony Bringardner
- *
+ *  OutputStream that writes lines terminated with a LF.
+ * 
  */
 public class LFLineWriter extends AbstractLineWriter {
+
+	private static final byte [] TERMINATOR = { '\n'};
 
 	/**
 	 * @param out
 	 */
 	public LFLineWriter(OutputStream out) {		
-		super(out, new byte[] {NL});
+		super(out, TERMINATOR);
+	}
+
+	public LFLineWriter(OutputStream out, Charset charset) {		
+		super(out, TERMINATOR, charset);
 	}
 
 	/**
 	 * @param out
 	 * @param buffSize
-	 * 
-	 * @throws IOException 
+	 * @throws IOException
 	 */
 	public LFLineWriter(OutputStream out,int buffSize) throws IOException {		
-		super(out, buffSize, new byte[] {NL});
+		super(out, buffSize, TERMINATOR);
 	}
 	
+	/**
+	 * Output to a file is buffered and 'Auto Flush' is off.
+	 */
 	public LFLineWriter(File outputFile) throws IOException {		
-		super(outputFile, new byte[] {NL});
+		super(outputFile, TERMINATOR);
+	}
+
+	public LFLineWriter(File outputFile, Charset charset) throws IOException {		
+		super(outputFile, TERMINATOR, charset);
 	}
 
 }

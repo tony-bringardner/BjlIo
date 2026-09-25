@@ -25,14 +25,12 @@
  */
 package us.bringardner.io;
 
-import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FilterInputStream;
-import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.Charset;
 
 /**
  * @author Tony Bringardner
@@ -40,65 +38,34 @@ import java.io.InputStream;
  * 
  *
  */
-public class LFLineReader extends FilterInputStream implements ILineReader, IoConstants {
-
-	
-	private long bytes;
-	private long lastReadTime;
+public class LFLineReader extends AbstractLineReader {
 
 	public LFLineReader(File inputFile) throws FileNotFoundException {
 		this(new FileInputStream(inputFile));
 	}
 
+	public LFLineReader(File inputFile, Charset charset) throws FileNotFoundException {
+		this(new FileInputStream(inputFile), charset);
+	}
+
+	/**
+	 * Lines are decoded as UTF-8.
+	 * @param in
+	 */
 	public LFLineReader(InputStream in) {
-		super((in instanceof BufferedInputStream) ? in	: new BufferedInputStream(in));
+		this(in, DEFAULT_CHARSET);
+	}
+
+	public LFLineReader(InputStream in, Charset charset) {
+		super(in, charset);
 	}
 
 	public LFLineReader(String str) {
-		this(new ByteArrayInputStream(str.getBytes()));
+		this(new ByteArrayInputStream(str.getBytes(DEFAULT_CHARSET)));
 	}
 
-	public void close() throws IOException {
-		super.close();
-	}
-
-	public long getBytesIn() {
-		return bytes;
-	}
-
-	public String readLine() throws IOException {
-		StringBuffer bf = new StringBuffer();
-		int i = 0;
-		boolean done = false;
-		int cnt = 0;
-		
-		while (!done && (i = read()) != -1) {
-			if (i == NL) {
-				done = true;
-			} else {
-				bf.append((char)i);
-				cnt++;
-			}	
-		}
-
-		String ret = null;
-		if (i >= 0) {
-			ret = bf.toString();
-			bytes += cnt;
-		}
-		
-		lastReadTime = System.currentTimeMillis();
-		return ret;
-
-	}
-
-	public int inputAvailable() throws IOException {
-		
-		return super.available();
-	}
-
-	public long getLastReadTime() {
-		
-		return lastReadTime;
+	@Override
+	protected boolean isCrlfTerminated() {
+		return false;
 	}
 }

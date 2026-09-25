@@ -23,17 +23,18 @@
  *
  * ~version~V000.01.03-V000.00.01-V000.00.00-
  */
-/**
- * 
- */
 package us.bringardner.io;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.Objects;
 
 /**
  * @author tony
- *  Monitored
+ *  An OutputStream that reports progress to an {@link IStreamMonitor}.
+ *  <p>
+ *  start() is called before the first byte is counted, update(total, blockSize) is called each time
+ *  the total crosses a multiple of blockSize and complete(total) is called once, on close.
  */
 public class MonitoredOutputStream extends OutputStream {
 
@@ -41,27 +42,39 @@ public class MonitoredOutputStream extends OutputStream {
 	IStreamMonitor monitor;
 	long total=0;
 	long blockSize=(4*1024);
+	private boolean started = false;
+	private boolean completed = false;
 	
 	public MonitoredOutputStream(OutputStream output, IStreamMonitor monitor) {
 		if( output == null || monitor == null ) {
-			throw new RuntimeException("Both output and moniotor are required");
+			throw new IllegalArgumentException("Both output and monitor are required");
 		}
 		target = output;
 		this.monitor = monitor;
 	}
 	
-	public MonitoredOutputStream(OutputStream output, long bloackSize, IStreamMonitor monitor) {
+	public MonitoredOutputStream(OutputStream output, long blockSize, IStreamMonitor monitor) {
 		this(output, monitor);
-		this.blockSize = bloackSize;		
+		if( blockSize <= 0 ) {
+			throw new IllegalArgumentException("blockSize must be > 0");
+		}
+		this.blockSize = blockSize;		
 	}
 	
-	private void addToTotal(int count) {
-		if( total == 0 ) {
+	private void addToTotal(long count) {
+		if( count <= 0 ) {
+			return;
+		}
+		if( !started ) {
+			started = true;
 			monitor.start();
 		}
-		if(count >=0 && (total+= count) % blockSize == 0l) {
-			monitor.update(total, blockSize);
-		}		
+		long before = total;
+		total += count;
+		//  Report every block boundary that was crossed (same calls as when data is written one byte at a time).
+		for(long block = (before / blockSize + 1) * blockSize; block <= total; block += blockSize) {
+			monitor.update(block, blockSize);
+		}
 	}
 	
 	@Override
@@ -73,18 +86,29 @@ public class MonitoredOutputStream extends OutputStream {
 	
 	@Override
 	public void close() throws IOException {
-		target.close();
-		monitor.complete(total);
+		try {
+			target.close();
+		} finally {
+			if( !completed ) {
+				completed = true;
+				monitor.complete(total);
+			}
+		}
 	}
 
 	@Override
 	public boolean equals(Object obj) {
-		if (obj instanceof MonitoredInputStream) {
-			MonitoredInputStream mis = (MonitoredInputStream) obj;
-			return target.equals(mis.target);
+		if (obj instanceof MonitoredOutputStream) {
+			MonitoredOutputStream mos = (MonitoredOutputStream) obj;
+			return target.equals(mos.target);
 		} else {
 			return false;
 		}
+	}
+
+	@Override
+	public int hashCode() {
+		return target.hashCode();
 	}
 	
 	@Override
@@ -104,9 +128,9 @@ public class MonitoredOutputStream extends OutputStream {
 	
 	@Override
 	public void write(byte[] b, int off, int len) throws IOException {
-		for (int idx = off; idx < len; idx++) {
-			this.write(b[idx]);
-		}
+		Objects.checkFromIndexSize(off, len, b.length);
+		target.write(b, off, len);
+		addToTotal(len);
 	}
 	
 }
