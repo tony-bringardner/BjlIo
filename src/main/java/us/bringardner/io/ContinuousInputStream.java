@@ -25,7 +25,6 @@
  */
 package us.bringardner.io;
 
-import java.io.EOFException;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -281,9 +280,11 @@ public class ContinuousInputStream extends java.io.InputStream {
 	/**
 	 * Read a line of text (terminated by LF, a CR before the LF is removed).
 	 * If EOF is reached the partial line is returned.
+	 * <p>
+	 * Waits for more data, so null is only returned after {@link #setEof(boolean)} or
+	 * {@link #close()} has been called and all of the data has been read.
 	 * 
-	 * @return the next line
-	 * @throws EOFException if EOF is reached before any data is read.
+	 * @return the next line, or null at the end of the stream.
 	 * @throws IOException if there is an error reading the file (or the thread is interrupted).
 	 */
 	public synchronized String readLine()	throws IOException	{
@@ -312,7 +313,7 @@ public class ContinuousInputStream extends java.io.InputStream {
 		}
 
 		if( !gotData ) {
-			throw new EOFException();
+			return null;
 		}
 
 		if( sz > 0 && line[sz-1] == '\r') {

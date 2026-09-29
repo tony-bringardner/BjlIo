@@ -132,14 +132,13 @@ When a writer is created from a `File`, it is buffered and does not flush after 
 ContinuousInputStream log = new ContinuousInputStream(new File("app.log"), false);
 log.unreadLines(10);            // start with the last 10 lines, like tail -n 10
 
-// Blocks waiting for new lines. From another thread call log.setEof(true)
-// (finish reading what's in the file, then stop) or log.close() (stop now).
+// readLine() waits for new lines. It returns null only after another thread calls
+// log.setEof(true) (finish reading what's in the file, then stop) or log.close() (stop now).
 try {
-    while (true) {
-        System.out.println(log.readLine());
+    String line;
+    while ((line = log.readLine()) != null) {
+        System.out.println(line);
     }
-} catch (EOFException e) {
-    // reached the end after setEof(true) or close()
 } finally {
     log.close();
 }

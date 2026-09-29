@@ -34,7 +34,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.EOFException;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -128,7 +127,7 @@ class TestIo {
 			assertEquals("a", in.readLine());
 			assertEquals("b", in.readLine());
 			assertEquals("last", in.readLine(),"Partial last line should be returned at EOF");
-			assertThrows(EOFException.class, in::readLine);
+			assertNull(in.readLine());
 		}
 	}
 
@@ -141,7 +140,7 @@ class TestIo {
 			in.unreadLines(2);
 			assertEquals("l2", in.readLine());
 			assertEquals("l3", in.readLine());
-			assertThrows(EOFException.class, in::readLine);
+			assertNull(in.readLine());
 
 			in.unreadLines(10);
 			assertEquals("l1", in.readLine(),"Asking for more lines than the file has should start at the beginning");
@@ -159,7 +158,7 @@ class TestIo {
 			for(int idx=2000; idx < 5000; idx++ ) {
 				assertEquals("line number "+idx, in.readLine());
 			}
-			assertThrows(EOFException.class, in::readLine);
+			assertNull(in.readLine());
 		}
 	}
 

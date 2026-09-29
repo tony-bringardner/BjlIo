@@ -33,7 +33,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -700,6 +699,38 @@ class TestCoverage {
 	}
 
 	@Test
+	void testTelnetInputStreamCloseLeavesEchoOpen() throws IOException {
+		final boolean [] flushed = {false};
+		final boolean [] closed = {false};
+		ByteArrayOutputStream echo = new ByteArrayOutputStream() {
+			@Override
+			public void flush() {
+				flushed[0] = true;
+			}
+			@Override
+			public void close() {
+				closed[0] = true;
+			}
+		};
+		TelnetInputStream in = new TelnetInputStream(new ByteArrayInputStream(new byte[0]), echo);
+		in.close();
+		assertTrue(flushed[0]);
+		//  The echo stream belongs to the caller (it's often System.out).
+		assertFalse(closed[0]);
+
+		//  An error flushing the echo stream does not stop the input from being closed.
+		final boolean [] inputClosed = {false};
+		InputStream input = new ByteArrayInputStream(new byte[0]) {
+			@Override
+			public void close() {
+				inputClosed[0] = true;
+			}
+		};
+		new TelnetInputStream(input, new FailingOutputStream(false)).close();
+		assertTrue(inputClosed[0]);
+	}
+
+	@Test
 	void testTelnetOutputStreamFiltersCharacters() throws IOException {
 		ByteArrayOutputStream target = new ByteArrayOutputStream();
 		try(TelnetOutputStream out = new TelnetOutputStream(target)) {
@@ -786,7 +817,7 @@ class TestCoverage {
 			assertEquals("", in.readLine());
 			//  The last line has no terminator, it's returned at EOF.
 			assertEquals("\u00e9", in.readLine());
-			assertThrows(EOFException.class, in::readLine);
+			assertNull(in.readLine());
 		}
 	}
 

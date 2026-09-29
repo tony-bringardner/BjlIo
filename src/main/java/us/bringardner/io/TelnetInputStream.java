@@ -28,8 +28,9 @@ import java.util.Objects;
  * TelnetOutputStream to = new TelnetOutputStream(sock.getOutputStream());
  * TelnetInputStream  ti = new TelnetInputStream(sock.getInputStream(), System.out);
  * </pre>
+ * The echo stream belongs to the caller: {@link #close()} flushes it but does not close it.
  * Creation date: (11/8/01 8:31:23 AM)
- * @author: Tony Bringardner
+ * @author Tony Bringardner
  */
 public class TelnetInputStream extends InputStream {
 	private final OutputStream out;
@@ -46,12 +47,13 @@ public class TelnetInputStream extends InputStream {
 	}
 
 	/**
-	 * Close the input and the echo output stream.
+	 * Close the input. The echo stream is flushed but NOT closed (it belongs to the caller,
+	 * and is often System.out).
 	 */
 	public void close() throws IOException {
 		try {
-			//  Errors closing the echo stream are ignored, the input is always closed.
-			try { out.close(); } catch(Exception ex) {}
+			//  Errors flushing the echo stream are ignored, the input is always closed.
+			try { out.flush(); } catch(Exception ex) {}
 		} finally {
 			in.close();
 		}

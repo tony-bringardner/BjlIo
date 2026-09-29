@@ -28,7 +28,7 @@ import java.util.Objects;
  * This is not a full Telnet (RFC 854) implementation; it only keeps 8-bit data
  * (including the IAC byte 0xFF) off the connection.
  * Creation date: (11/8/01 8:41:37 AM)
- * @author: Tony Bringardner
+ * @author Tony Bringardner
  */
 public class TelnetOutputStream extends OutputStream {
 	/** The highest character that is transmitted ('~', the last printable ASCII character). */

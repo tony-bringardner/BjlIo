@@ -47,7 +47,7 @@ public class CRLFLineReader extends AbstractLineReader {
 	/**
 	 * Construct a CRLFInputStream from a File.
 	 * 
-	 * @param File to read.
+	 * @param inputFile the file to read.
 	 * @throws FileNotFoundException
 	 */
 	public CRLFLineReader(File inputFile) throws FileNotFoundException {
@@ -57,7 +57,7 @@ public class CRLFLineReader extends AbstractLineReader {
 	/**
 	 * Construct a CRLFInputStream from a File.
 	 * 
-	 * @param File to read.
+	 * @param inputFile the file to read.
 	 * @param charset used to convert bytes to a String.
 	 * @throws FileNotFoundException
 	 */
