@@ -18,12 +18,12 @@ code behaves the same way on every OS.
 | Class | Purpose |
 |---|---|
 | `CRLFLineReader` / `CRLFLineWriter` | Lines terminated by CR LF. A lone CR or LF is kept as part of the line. |
-| `LFLineReader` / `LFLineWriter` | Lines terminated by LF. |
+| `LFLineReader` / `LFLineWriter` | Lines terminated by LF. A CR before the LF is kept as part of the line. |
 | `ILineReader` / `ILineWriter` | Common interfaces for the readers and writers above. |
 | `ContinuousInputStream` | Reads a file and waits for more data at the end, like `tail -f`. |
 | `MonitoredInputStream` / `MonitoredOutputStream` | Report progress to an `IStreamMonitor` as data flows through them. |
 | `TeeOutputStream` | Writes the same data to several output streams. |
-| `TelnetInputStream` / `TelnetOutputStream` | Echo input back to the peer, and strip output to 7-bit printable characters. |
+| `TelnetInputStream` / `TelnetOutputStream` | Echo everything read to another stream, and restrict output to 7-bit characters up to `~`. |
 
 The line readers and writers:
 
@@ -40,7 +40,7 @@ The artifact is published to GitHub Packages:
 <dependency>
     <groupId>us.bringardner</groupId>
     <artifactId>bjl_io</artifactId>
-    <version>0.1.2</version>
+    <version>1.0.0</version>
 </dependency>
 ```
 
@@ -85,6 +85,10 @@ try (Socket socket = new Socket("mail.example.com", 25);
     String reply = in.readLine();
 }
 ```
+
+`writeLine` does not check the text for CR or LF. If any part of a line comes from
+an untrusted source, strip or reject CR and LF first. Otherwise that source can inject
+extra commands into the protocol (for example SMTP or HTTP header injection).
 
 When a stream writer is created, it flushes after every write, so each line goes out
 straight away. Call `setAutoFlush(false)` to batch several lines, and then call `flush()` yourself.
@@ -163,10 +167,13 @@ try (InputStream in = new MonitoredInputStream(new FileInputStream("big.zip"), 1
 ### Copy output to several places
 
 ```java
-try (OutputStream both = new TeeOutputStream(new FileOutputStream("session.log"), System.out)) {
+try (OutputStream both = new TeeOutputStream(new FileOutputStream("session.log"),
+                                             new FileOutputStream("session-copy.log"))) {
     both.write("hello\n".getBytes(StandardCharsets.UTF_8));
 }
 ```
+
+`close()` closes every stream, so don't pass `System.out` to a tee that you close.
 
 If one stream fails, the others are still written. The first error is thrown, and any
 later errors are attached to it as suppressed exceptions.

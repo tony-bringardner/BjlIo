@@ -598,7 +598,7 @@ class TestIo {
 	@Test
 	public void testTelnetStreams() throws IOException {
 
-		// Telnet output (as described in RFC206) is restricted to characters <= 'z' (0x7A) 
+		// Telnet output is restricted to 7-bit characters <= '~' (0x7E)
 		ByteArrayOutputStream bao1 =  new ByteArrayOutputStream();
 		List<Byte> expected = new ArrayList<>();
 		try(TelnetOutputStream tno = new TelnetOutputStream(bao1)) {
@@ -606,7 +606,7 @@ class TestIo {
 				tno.write(idx);
 				//Note: This is the logic used by TelnetOutputStream
 				int i = idx & 0x7F;
-				if( i <= 'z') {
+				if( i <= '~') {
 					expected.add((byte)i);
 				}
 			}

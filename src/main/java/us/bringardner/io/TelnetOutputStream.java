@@ -23,20 +23,24 @@ package us.bringardner.io;
 import java.io.*;
 import java.util.Objects;
 /**
- * 
+ * Restricts output to 7-bit characters no higher than {@link #MAX_CHAR} ('~').
+ * <p>
+ * This is not a full Telnet (RFC 854) implementation; it only keeps 8-bit data
+ * (including the IAC byte 0xFF) off the connection.
  * Creation date: (11/8/01 8:41:37 AM)
  * @author: Tony Bringardner
  */
 public class TelnetOutputStream extends OutputStream {
-	/** The highest character that is transmitted. */
-	public static final int MAX_CHAR = 'z';
+	/** The highest character that is transmitted ('~', the last printable ASCII character). */
+	public static final int MAX_CHAR = '~';
 
-	private OutputStream out;
+	private final OutputStream out;
+
 	/**
-	 * TelnetOutputStream constructor comment.
+	 * @param newOut the stream the filtered data is written to.
 	 */
 	public TelnetOutputStream(OutputStream newOut) {
-		out = newOut;
+		out = Objects.requireNonNull(newOut, "newOut is required");
 	}
 
 	
@@ -45,10 +49,10 @@ public class TelnetOutputStream extends OutputStream {
 	 * contract for <code>write</code> is that one byte is written 
 	 * to the output stream. 
 	 * 
-	 * While the telnet protocol is more complicated (see RFC 206),
-	 * the only thing the output stream does is make sure nothing > 'z' (0x7A)
+	 * While the telnet protocol is more complicated (see RFC 854),
+	 * the only thing the output stream does is make sure nothing above '~' (0x7E)
 	 * is output (transmitted).
-	 * First the byte is restricted to the first 7 bits then if it's > 'z' it's ignored.
+	 * First the byte is restricted to the first 7 bits, then if it's above '~' (i.e. DEL) it's ignored.
 	 * 
 	 *
 	 * @param      b   the <code>byte</code>.

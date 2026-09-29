@@ -37,7 +37,7 @@ import java.util.Arrays;
 import java.util.Objects;
 
 /**
- * ContinuousInputStream will read data until EOF then it will wait for addition data to
+ * ContinuousInputStream will read data until EOF then it will wait for additional data to
  * arrive instead of ending the read.
  * It's Useful when debugging or monitoring processes. Think tail -f
  * <p>
@@ -133,33 +133,6 @@ public class ContinuousInputStream extends java.io.InputStream {
 	 */
 	public void setCharset(Charset charset) {
 		this.charset = Objects.requireNonNull(charset, "charset is required");
-	}
-
-	/**
-	 * Starts the application.
-	 * @param args an array of command-line arguments
-	 */
-	public static void main(java.lang.String[] args)	throws Exception {
-
-		String fileName = null;
-		if( args.length > 0 ) {
-			fileName = args[0];
-		} else {
-			fileName = System.getProperty("fileName");
-		}
-		if( fileName == null ) {
-			System.out.println("fileName is required");
-			System.exit(-1);
-		}
-
-		try(ContinuousInputStream buf = new ContinuousInputStream(fileName,true)) {
-			String line = null;
-			while( ( line=buf.readLine()) != null ) {
-				System.out.println("line='"+line+"'");
-			}
-		} catch (EOFException e) {
-			//  Normal end
-		}
 	}
 
 	/**

@@ -23,31 +23,26 @@ package us.bringardner.io;
 import java.io.*;
 import java.util.Objects;
 /**
- * This is really just a utility to read from a remote stream and echo on a local screen
+ * Reads from a remote stream and echoes every byte it reads to another stream (e.g. a local screen).
+ * <pre>
+ * TelnetOutputStream to = new TelnetOutputStream(sock.getOutputStream());
+ * TelnetInputStream  ti = new TelnetInputStream(sock.getInputStream(), System.out);
+ * </pre>
  * Creation date: (11/8/01 8:31:23 AM)
  * @author: Tony Bringardner
  */
 public class TelnetInputStream extends InputStream {
-	private OutputStream out;
-	private InputStream in;
-	
+	private final OutputStream out;
+	private final InputStream in;
 
 	/**
-	 * TelnetInputStream constructor comment.
-	 * USAGE : 
-	 * 	
-	 * TelnetOutputStream to = new TelnetOutputStream(sock.getOutputStream());
-   TelnetInputStream  ti = new TelnetInputStream(sock.getInputStream(),to);
-
-	in = new DataInputStream(ti);
-	out = new PrintStream(to);
-
-
+	 * @param input the stream to read from.
+	 * @param output every byte read is echoed (written and flushed) to this stream.
 	 */
 	public TelnetInputStream(InputStream input, OutputStream output) {
 		super();
-		in = input;
-		out = output;	
+		in = Objects.requireNonNull(input, "input is required");
+		out = Objects.requireNonNull(output, "output (the echo stream) is required");
 	}
 
 	/**
@@ -55,9 +50,8 @@ public class TelnetInputStream extends InputStream {
 	 */
 	public void close() throws IOException {
 		try {
-			if( out != null ) {
-				try { out.close(); } catch(Exception ex) {}
-			}
+			//  Errors closing the echo stream are ignored, the input is always closed.
+			try { out.close(); } catch(Exception ex) {}
 		} finally {
 			in.close();
 		}
@@ -98,8 +92,7 @@ public class TelnetInputStream extends InputStream {
 	 * has been reached, the value <code>-1</code> is returned. This method
 	 * blocks until input data is available, the end of the stream is detected,
 	 * or an exception is thrown.
-	 *
-	 * <p> A subclass must provide an implementation of this method.
+	 * The byte is also written (and flushed) to the echo stream.
 	 *
 	 * @return     the next byte of data, or <code>-1</code> if the end of the
 	 *             stream is reached.

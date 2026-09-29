@@ -35,14 +35,14 @@ import java.io.IOException;
  * Command lines are normally terminated with a CRLF (Carriage Return / Line feed) pair.
  * 
  * Objects that implement this Interface know how to write a line of text
- * from to OutputStream. 
+ * to an OutputStream. 
  */
 public interface ILineWriter extends IoConstants,AutoCloseable {
 	
 	
 	
 	/**
-	 * Close this LineWriter and it's associated OutputStream.
+	 * Close this LineWriter and its associated OutputStream.
 	 * 
 	 * @throws IOException
 	 */
@@ -51,7 +51,7 @@ public interface ILineWriter extends IoConstants,AutoCloseable {
 	
 	/**
 	 * Flush the outputStream.  This ensures that all lines previously written
-	 * are sent to it's destination.
+	 * are sent to their destination.
 	 * 
 	 * @throws IOException
 	 */
@@ -61,7 +61,7 @@ public interface ILineWriter extends IoConstants,AutoCloseable {
 	/**
 	 * Set the 'Auto Flush' flag. 
 	 * 
-	 * @param true if each line should be flushed as it is written.
+	 * @param trueOrFalse true if each line should be flushed as it is written.
 	 */
 	public void setAutoFlush(boolean trueOrFalse);
 	
@@ -77,6 +77,12 @@ public interface ILineWriter extends IoConstants,AutoCloseable {
 	/**
 	 * Write a line of text to the OutputStream.  The appropriate 
 	 * End-Of-Line will be added.
+	 * <p>
+	 * The text is written as is: it is NOT checked for CR or LF characters. If the line
+	 * contains a line terminator, the peer receives more than one line. When any part of
+	 * the line comes from an untrusted source (user input, another server, a file),
+	 * remove or reject CR and LF first, otherwise the source can inject extra commands
+	 * into a line based protocol (e.g. SMTP or HTTP header injection).
 	 * 
 	 * @param line
 	 * @throws IOException

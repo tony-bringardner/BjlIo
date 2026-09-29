@@ -147,8 +147,14 @@ class TestCoverage {
 	// ------------------------------------------------------------------------
 
 	@Test
+	@SuppressWarnings("deprecation")
 	void testIoConstants() {
 		assertArrayEquals(new byte[] {'\r','\n'}, IoConstants.CRNL);
+		byte [] crlf = IoConstants.crlf();
+		assertArrayEquals(new byte[] {'\r','\n'}, crlf);
+		//  Every call returns a new copy, so changing one can't affect anyone else.
+		crlf[0] = 'x';
+		assertArrayEquals(new byte[] {'\r','\n'}, IoConstants.crlf());
 		assertEquals('\r', IoConstants.CR);
 		assertEquals('\n', IoConstants.NL);
 	}
@@ -561,9 +567,9 @@ class TestCoverage {
 		//  Every byte read is echoed.
 		assertEquals("abc", echo.toString("US-ASCII"));
 
-		//  A null echo stream is allowed when closing.
-		TelnetInputStream noEcho = new TelnetInputStream(new ByteArrayInputStream(new byte[0]), null);
-		noEcho.close();
+		//  Both streams are required.
+		assertThrows(NullPointerException.class, () -> new TelnetInputStream(new ByteArrayInputStream(new byte[0]), null));
+		assertThrows(NullPointerException.class, () -> new TelnetInputStream(null, echo));
 	}
 
 	@Test
@@ -572,15 +578,19 @@ class TestCoverage {
 		try(TelnetOutputStream out = new TelnetOutputStream(target)) {
 			//  The high bit is removed: 0xC1 -> 'A'
 			out.write(0xC1);
-			//  Anything above MAX_CHAR is dropped
+			//  All printable ASCII is transmitted, including the characters after 'z'
 			out.write('{');
+			//  DEL (0x7F, and 0xFF once the high bit is removed) is dropped
+			out.write(0x7F);
 			out.write(0xFF);
+			out.write("|}~".getBytes(StandardCharsets.US_ASCII), 0, 3);
 			//  All of these are dropped, so nothing is written.
-			out.write("{|}~".getBytes(StandardCharsets.US_ASCII), 0, 4);
-			out.write(new byte[] {'x', 'b', (byte)('c' | 0x80), '~'}, 1, 3);
+			out.write(new byte[] {0x7F, (byte)0xFF}, 0, 2);
+			out.write(new byte[] {'x', 'b', (byte)('c' | 0x80), 0x7F}, 1, 3);
 			out.flush();
 		}
-		assertEquals("Abc", target.toString("US-ASCII"));
+		assertEquals("A{|}~bc", target.toString("US-ASCII"));
+		assertThrows(NullPointerException.class, () -> new TelnetOutputStream(null));
 	}
 
 	// ------------------------------------------------------------------------

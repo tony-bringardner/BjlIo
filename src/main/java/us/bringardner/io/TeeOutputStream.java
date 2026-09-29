@@ -25,11 +25,8 @@
  */
 package us.bringardner.io;
 
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
 import java.util.Objects;
 
 /**
@@ -125,19 +122,5 @@ public class   TeeOutputStream extends OutputStream {
 	 */
 	public void flush() throws IOException	{
 		forEach(OutputStream::flush);
-	}
-
-
-
-	/** Test driver */
-	public static void main(String args[]) throws Exception		{
-		FileOutputStream fos =	new FileOutputStream("test.out");
-		TeeOutputStream  tos =	new TeeOutputStream(fos, System.out);
-		PrintWriter      pw  =	new PrintWriter(new OutputStreamWriter(tos));
-
-		pw.println("Testing line 1");
-		pw.println("Testing line 2");
-
-		pw.close();
 	}
 }
