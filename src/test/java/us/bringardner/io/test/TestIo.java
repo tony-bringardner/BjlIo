@@ -59,7 +59,7 @@ import org.junit.jupiter.api.io.TempDir;
 import us.bringardner.core.BaseThread;
 import us.bringardner.io.CRLFLineReader;
 import us.bringardner.io.CRLFLineWriter;
-import us.bringardner.io.ContinuosInputStream;
+import us.bringardner.io.ContinuousInputStream;
 import us.bringardner.io.ILineReader;
 import us.bringardner.io.ILineWriter;
 import us.bringardner.io.IStreamMonitor;
@@ -80,7 +80,7 @@ class TestIo {
 	File tempDir;
 
 	@Test
-	void testContinuosInputStream() throws Exception {
+	void testContinuousInputStream() throws Exception {
 		File file = new File(tempDir,"ContinuousIOTestFile.txt");
 		//  Create the file before the reader opens it.
 		PrintStream out = new PrintStream(file);
@@ -109,7 +109,7 @@ class TestIo {
 		thread.start();
 		
 		assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
-			try(ContinuosInputStream in = new ContinuosInputStream(file,false)) {
+			try(ContinuousInputStream in = new ContinuousInputStream(file,false)) {
 				for(int cnt=0; cnt < 7; cnt++ ) {
 					assertEquals("line "+cnt+". ", in.readLine());
 				}
@@ -120,10 +120,10 @@ class TestIo {
 	}
 
 	@Test
-	void testContinuosInputStreamEofAfterDataIsRead() throws IOException {
+	void testContinuousInputStreamEofAfterDataIsRead() throws IOException {
 		File file = new File(tempDir,"eof.txt");
 		Files.write(file.toPath(), "a\r\nb\nlast".getBytes(StandardCharsets.UTF_8));
-		try(ContinuosInputStream in = new ContinuosInputStream(file,false)) {
+		try(ContinuousInputStream in = new ContinuousInputStream(file,false)) {
 			in.setEof(true);
 			assertEquals("a", in.readLine());
 			assertEquals("b", in.readLine());
@@ -133,10 +133,10 @@ class TestIo {
 	}
 
 	@Test
-	void testContinuosInputStreamUnreadLines() throws IOException {
+	void testContinuousInputStreamUnreadLines() throws IOException {
 		File file = new File(tempDir,"tail.txt");
 		Files.write(file.toPath(), "l1\nl2\nl3\n".getBytes(StandardCharsets.UTF_8));
-		try(ContinuosInputStream in = new ContinuosInputStream(file,true)) {
+		try(ContinuousInputStream in = new ContinuousInputStream(file,true)) {
 			in.setEof(true);
 			in.unreadLines(2);
 			assertEquals("l2", in.readLine());
@@ -153,7 +153,7 @@ class TestIo {
 			big.append("line number ").append(idx).append('\n');
 		}
 		Files.write(file.toPath(), big.toString().getBytes(StandardCharsets.UTF_8));
-		try(ContinuosInputStream in = new ContinuosInputStream(file,true)) {
+		try(ContinuousInputStream in = new ContinuousInputStream(file,true)) {
 			in.setEof(true);
 			in.unreadLines(3000);
 			for(int idx=2000; idx < 5000; idx++ ) {
@@ -164,11 +164,11 @@ class TestIo {
 	}
 
 	@Test
-	void testContinuosInputStreamTruncatedFile() throws Exception {
+	void testContinuousInputStreamTruncatedFile() throws Exception {
 		File file = new File(tempDir,"truncate.txt");
 		Files.write(file.toPath(), "old line 1\nold line 2\n".getBytes(StandardCharsets.UTF_8));
 		assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
-			try(ContinuosInputStream in = new ContinuosInputStream(file,false)) {
+			try(ContinuousInputStream in = new ContinuousInputStream(file,false)) {
 				in.setFreq(10);
 				assertEquals("old line 1", in.readLine());
 				assertEquals("old line 2", in.readLine());
@@ -183,12 +183,12 @@ class TestIo {
 	}
 
 	@Test
-	void testContinuosInputStreamCloseAndInterrupt() throws Exception {
+	void testContinuousInputStreamCloseAndInterrupt() throws Exception {
 		File file = new File(tempDir,"block.txt");
 		Files.write(file.toPath(), new byte[0]);
 
 		//  close() from another thread ends a blocked read
-		try(ContinuosInputStream in = new ContinuosInputStream(file,false)) {
+		try(ContinuousInputStream in = new ContinuousInputStream(file,false)) {
 			AtomicReference<Object> result = new AtomicReference<>();
 			Thread reader = new Thread(() -> {
 				try {
@@ -206,7 +206,7 @@ class TestIo {
 		}
 
 		//  interrupt ends a blocked read with InterruptedIOException
-		try(ContinuosInputStream in = new ContinuosInputStream(file,false)) {
+		try(ContinuousInputStream in = new ContinuousInputStream(file,false)) {
 			AtomicReference<Object> result = new AtomicReference<>();
 			Thread reader = new Thread(() -> {
 				try {
