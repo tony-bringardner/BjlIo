@@ -238,6 +238,8 @@ class TestCoverage {
 			assertEquals(-1, r.read());
 			assertNull(r.readLine());
 			assertTrue(r.getLastReadTime() > 0);
+			//  Every byte that was read or skipped is counted.
+			assertEquals((long)data.length, r.getBytesIn());
 		}
 	}
 
@@ -253,6 +255,104 @@ class TestCoverage {
 			assertEquals(data.length, n);
 			assertArrayEquals(data, b);
 			assertEquals(-1, r.read(b, 0, b.length));
+			assertEquals((long)data.length, r.getBytesIn());
+		}
+	}
+
+	@Test
+	void testBytesInMatchesBytesOut() throws IOException {
+		String [] lines = {"one", "", "caf\u00e9", "has a lone \n LF", "last"};
+
+		ByteArrayOutputStream crlfOut = new ByteArrayOutputStream();
+		long crlfWritten;
+		try(CRLFLineWriter w = new CRLFLineWriter(crlfOut)) {
+			for (String line : lines) {
+				w.writeLine(line);
+			}
+			//  A final line without a terminator
+			w.write("tail");
+			crlfWritten = w.getBytesOut();
+		}
+		assertEquals(crlfOut.size(), crlfWritten);
+		try(CRLFLineReader r = new CRLFLineReader(new ByteArrayInputStream(crlfOut.toByteArray()))) {
+			for (String line : lines) {
+				assertEquals(line, r.readLine());
+			}
+			assertEquals("tail", r.readLine());
+			assertNull(r.readLine());
+			assertEquals(crlfWritten, r.getBytesIn());
+		}
+
+		ByteArrayOutputStream lfOut = new ByteArrayOutputStream();
+		long lfWritten;
+		try(LFLineWriter w = new LFLineWriter(lfOut)) {
+			w.writeLine("a");
+			w.writeLine("");
+			w.writeLine("b\r");
+			lfWritten = w.getBytesOut();
+		}
+		try(LFLineReader r = new LFLineReader(new ByteArrayInputStream(lfOut.toByteArray()))) {
+			while( r.readLine() != null ) {
+				//  read everything
+			}
+			assertEquals(lfWritten, r.getBytesIn());
+		}
+	}
+
+	@Test
+	void testBytesInCountsEveryReadMethod() throws IOException {
+		try(CRLFLineReader r = new CRLFLineReader("ab\r\ncd\r\nef")) {
+			assertEquals(0L, r.getBytesIn());
+			assertEquals("ab", r.readLine());
+			//  The terminator is counted
+			assertEquals(4L, r.getBytesIn());
+			assertEquals('c', r.read());
+			assertEquals(5L, r.getBytesIn());
+			assertEquals(1L, r.skip(1));
+			assertEquals(6L, r.getBytesIn());
+			assertEquals("", r.readLine());
+			assertEquals(8L, r.getBytesIn());
+			byte [] b = new byte[10];
+			assertEquals(2, r.read(b));
+			assertEquals(10L, r.getBytesIn());
+			assertNull(r.readLine());
+			assertEquals(10L, r.getBytesIn());
+		}
+
+		//  Skipping past the buffer goes to the underlying stream, and is counted too.
+		int size = IoConstants.DEFAULT_BUFFER_SIZE * 3;
+		try(LFLineReader r = new LFLineReader(new ByteArrayInputStream(new byte[size]))) {
+			assertEquals(100, r.read(new byte[100]));
+			//  The rest of the first buffer fill
+			assertEquals(IoConstants.DEFAULT_BUFFER_SIZE - 100L, r.skip(size));
+			//  Nothing buffered now, so this is skipped by the underlying stream.
+			assertEquals(1000L, r.skip(1000));
+			assertEquals(IoConstants.DEFAULT_BUFFER_SIZE + 1000L, r.getBytesIn());
+			//  A large read goes directly to the underlying stream.
+			byte [] big = new byte[size];
+			int rest = size - IoConstants.DEFAULT_BUFFER_SIZE - 1000;
+			assertEquals(rest, r.read(big, 0, big.length));
+			assertEquals(-1, r.read(big, 0, big.length));
+			assertEquals((long)size, r.getBytesIn());
+		}
+
+		//  A trailing CR at EOF is not part of the line, but it was read.
+		try(CRLFLineReader r = new CRLFLineReader("abc\r")) {
+			assertEquals("abc", r.readLine());
+			assertEquals(4L, r.getBytesIn());
+		}
+	}
+
+	@Test
+	void testBytesInCountsALineThatIsTooLong() throws IOException {
+		String longLine = repeat('a', 30);
+		try(LFLineReader r = new LFLineReader(longLine + "\nnext\n")) {
+			r.setMaxLineLength(10);
+			assertThrows(LineTooLongException.class, r::readLine);
+			//  The long line (and its LF) were consumed.
+			assertEquals(31L, r.getBytesIn());
+			assertEquals("next", r.readLine());
+			assertEquals(36L, r.getBytesIn());
 		}
 	}
 
@@ -264,6 +364,8 @@ class TestCoverage {
 			assertThrows(IOException.class, r::reset);
 			//  mark did not change anything
 			assertEquals("abc", r.readLine());
+			assertEquals(3L, r.getBytesIn());
+			assertNull(r.readLine());
 			assertEquals(3L, r.getBytesIn());
 		}
 	}

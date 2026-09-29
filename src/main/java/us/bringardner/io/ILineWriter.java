@@ -99,6 +99,10 @@ public interface ILineWriter extends IoConstants,AutoCloseable {
 	
 	public void write(String line) throws IOException;
 	
+	/**
+	 * @return The number of bytes written to the OutputStream, including the line terminators.
+	 * @see ILineReader#getBytesIn()
+	 */
 	public long getBytesOut();
 	
 	public long getLastWriteTime();

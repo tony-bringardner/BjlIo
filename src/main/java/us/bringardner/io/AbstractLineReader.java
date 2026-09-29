@@ -62,6 +62,7 @@ public abstract class AbstractLineReader extends FilterInputStream implements IL
 	private volatile int maxLineLength;
 
 	//  Read by other threads (e.g. idle time-out monitors) so they must be volatile.
+	//  bytes is only changed in synchronized methods, so += is safe.
 	private volatile long bytes;
 	private volatile long lastReadTime;
 
@@ -178,10 +179,13 @@ public abstract class AbstractLineReader extends FilterInputStream implements IL
 				//  No LF in the buffer, keep everything and read more.
 				appendToLine(buf, start, limit - start);
 				pos = limit;
+				bytes += limit - start;
 				checkLength(crlf ? 1 : 0);
 			} else {
 				appendToLine(buf, start, idx - start);
 				pos = idx + 1;
+				//  The LF is consumed (and counted) too.
+				bytes += pos - start;
 				if( !crlf ) {
 					terminated = true;
 				} else if( lineLen > 0 && line[lineLen - 1] == CR ) {
@@ -206,7 +210,6 @@ public abstract class AbstractLineReader extends FilterInputStream implements IL
 		}
 		checkLength(0);
 
-		bytes += lineLen;
 		String ret = new String(line, 0, lineLen, charset);
 		if( line.length > DEFAULT_BUFFER_SIZE * 4 ) {
 			//  Don't hold on to the memory used by an unusually long line.
@@ -220,6 +223,7 @@ public abstract class AbstractLineReader extends FilterInputStream implements IL
 		if( !fill() ) {
 			return -1;
 		}
+		bytes++;
 		return buf[pos++] & 0xff;
 	}
 
@@ -236,7 +240,11 @@ public abstract class AbstractLineReader extends FilterInputStream implements IL
 		}
 		if( pos >= limit && len >= buf.length ) {
 			//  Nothing buffered and the caller wants a lot; read directly.
-			return in.read(b, off, len);
+			int n = in.read(b, off, len);
+			if( n > 0 ) {
+				bytes += n;
+			}
+			return n;
 		}
 		if( !fill() ) {
 			return -1;
@@ -244,6 +252,7 @@ public abstract class AbstractLineReader extends FilterInputStream implements IL
 		int n = Math.min(len, limit - pos);
 		System.arraycopy(buf, pos, b, off, n);
 		pos += n;
+		bytes += n;
 		return n;
 	}
 
@@ -256,9 +265,14 @@ public abstract class AbstractLineReader extends FilterInputStream implements IL
 		if( buffered > 0 ) {
 			int skipped = (int)Math.min(n, buffered);
 			pos += skipped;
+			bytes += skipped;
 			return skipped;
 		}
-		return in.skip(n);
+		long skipped = in.skip(n);
+		if( skipped > 0 ) {
+			bytes += skipped;
+		}
+		return skipped;
 	}
 
 	@Override

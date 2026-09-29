@@ -59,7 +59,12 @@ public interface ILineReader  extends IoConstants,AutoCloseable {
 	public void   close()    throws IOException;
 	
 	/**
-	 * @return The number of bytes read via the readLine method.
+	 * @return The number of bytes consumed from the InputStream: every byte returned by
+	 * readLine (including the line terminators), read and skip. Bytes the reader has
+	 * buffered but not yet returned are not counted.
+	 * <p>
+	 * This counts the same way as {@link ILineWriter#getBytesOut()}, so once everything a
+	 * writer sent has been read, the two values are equal.
 	 */
 	public long getBytesIn();
 	

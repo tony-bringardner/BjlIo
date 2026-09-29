@@ -29,7 +29,8 @@ The line readers and writers:
 
 - are `InputStream` / `OutputStream` subclasses, so you can mix `readLine()` with `read()` on the same stream;
 - use UTF-8 unless you pass another `Charset`;
-- count bytes (`getBytesIn()`, `getBytesOut()`) and record when they last read or wrote (`getLastReadTime()`, `getLastWriteTime()`), which is handy for idle time-outs;
+- count every byte read or written, line terminators included, so a writer's `getBytesOut()` equals the reader's `getBytesIn()` once everything has been read;
+- record when they last read or wrote (`getLastReadTime()`, `getLastWriteTime()`), which is handy for idle time-outs;
 - return a final line that has no terminator, instead of dropping it.
 
 ## Installation
