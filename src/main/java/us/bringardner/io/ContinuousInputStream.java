@@ -37,7 +37,7 @@ import java.util.Arrays;
 import java.util.Objects;
 
 /**
- * ContinuosInputStream will read data until EOF then it will wait for addition data to
+ * ContinuousInputStream will read data until EOF then it will wait for addition data to
  * arrive instead of ending the read.
  * It's Useful when debugging or monitoring processes. Think tail -f
  * <p>
@@ -46,7 +46,7 @@ import java.util.Objects;
  * If the file is truncated (e.g. log rotation by copy / truncate), reading restarts at the beginning of the file.
  * If the reading thread is interrupted while waiting for data an {@link InterruptedIOException} is thrown.
  */
-public class ContinuosInputStream extends java.io.InputStream {
+public class ContinuousInputStream extends java.io.InputStream {
 	private static final int BUFFER_SIZE = 8 * 1024;
 
 	private final RandomAccessFile in ;
@@ -65,16 +65,16 @@ public class ContinuosInputStream extends java.io.InputStream {
 	
 
 	/**
-	 * ContinuosInputStream constructor comment.
+	 * ContinuousInputStream constructor comment.
 	 */
-	public ContinuosInputStream(File file,boolean seekToEnd)	throws FileNotFoundException, IOException	{
+	public ContinuousInputStream(File file,boolean seekToEnd)	throws FileNotFoundException, IOException	{
 		this(new RandomAccessFile(file,"r"),seekToEnd);
 	}
 
 	/**
-	 * ContinuosInputStream constructor comment.
+	 * ContinuousInputStream constructor comment.
 	 */
-	public ContinuosInputStream(RandomAccessFile in, boolean seekToEnd)	throws IOException	{
+	public ContinuousInputStream(RandomAccessFile in, boolean seekToEnd)	throws IOException	{
 		super();
 		this.in = Objects.requireNonNull(in, "in is required");
 
@@ -87,9 +87,9 @@ public class ContinuosInputStream extends java.io.InputStream {
 	}
 
 	/**
-	 * ContinuosInputStream constructor comment.
+	 * ContinuousInputStream constructor comment.
 	 */
-	public ContinuosInputStream(String fileName,boolean seekToEnd)	throws FileNotFoundException, IOException	{
+	public ContinuousInputStream(String fileName,boolean seekToEnd)	throws FileNotFoundException, IOException	{
 		this(new RandomAccessFile(fileName,"r"),seekToEnd);
 	}
 
@@ -152,7 +152,7 @@ public class ContinuosInputStream extends java.io.InputStream {
 			System.exit(-1);
 		}
 
-		try(ContinuosInputStream buf = new ContinuosInputStream(fileName,true)) {
+		try(ContinuousInputStream buf = new ContinuousInputStream(fileName,true)) {
 			String line = null;
 			while( ( line=buf.readLine()) != null ) {
 				System.out.println("line='"+line+"'");
