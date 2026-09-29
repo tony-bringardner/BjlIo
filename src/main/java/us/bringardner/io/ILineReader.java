@@ -38,7 +38,7 @@ import java.io.IOException;
  * Objects that implement this Interface know how to read a line of text
  * from an InputStream. 
  */
-public interface ILineReader  extends IoConstants,AutoCloseable {
+public interface ILineReader extends AutoCloseable {
 	
 	
 	

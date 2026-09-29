@@ -37,6 +37,7 @@ import org.junit.jupiter.api.Test;
 
 import us.bringardner.io.AbstractLineReader;
 import us.bringardner.io.CRLFLineReader;
+import us.bringardner.io.IoConstants;
 import us.bringardner.io.LFLineReader;
 import us.bringardner.io.LineTooLongException;
 
@@ -131,7 +132,7 @@ public class TestLineLimit {
 		try(CRLFLineReader r = limit(new CRLFLineReader(endless), 8192)) {
 			assertThrows(LineTooLongException.class, r::readLine);
 		}
-		assertTrue(served[0] < 8192 + 2*AbstractLineReader.DEFAULT_BUFFER_SIZE, "read "+served[0]+" bytes");
+		assertTrue(served[0] < 8192 + 2*IoConstants.DEFAULT_BUFFER_SIZE, "read "+served[0]+" bytes");
 	}
 
 	@Test

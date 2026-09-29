@@ -26,6 +26,8 @@
 // ~version~V000.00.01-V000.00.00-
 package us.bringardner.io;
 
+import static us.bringardner.io.IoConstants.DEFAULT_BUFFER_SIZE;
+
 /**
  * @author Tony Bringardner
  */
@@ -50,7 +52,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * is given to the constructor), NOT the platform default, so the output is the same on every OS.
  * 
  */
-public abstract class AbstractLineWriter  extends FilterOutputStream implements ILineWriter,IoConstants 
+public abstract class AbstractLineWriter  extends FilterOutputStream implements ILineWriter 
 {
 	/** The Charset used when a Charset is not provided. */
 	public static final Charset DEFAULT_CHARSET = StandardCharsets.UTF_8;

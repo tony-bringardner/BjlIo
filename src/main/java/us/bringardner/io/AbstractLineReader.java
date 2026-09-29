@@ -25,6 +25,10 @@
  */
 package us.bringardner.io;
 
+import static us.bringardner.io.IoConstants.CR;
+import static us.bringardner.io.IoConstants.DEFAULT_BUFFER_SIZE;
+import static us.bringardner.io.IoConstants.NL;
+
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -44,7 +48,7 @@ import java.util.Objects;
  * All of the InputStream methods go through the same buffer, so mixing
  * {@link #readLine()} with {@link #read()} or {@link #read(byte[], int, int)} is safe.
  */
-public abstract class AbstractLineReader extends FilterInputStream implements ILineReader, IoConstants {
+public abstract class AbstractLineReader extends FilterInputStream implements ILineReader {
 
 	/** The Charset used when a Charset is not provided. */
 	public static final Charset DEFAULT_CHARSET = StandardCharsets.UTF_8;

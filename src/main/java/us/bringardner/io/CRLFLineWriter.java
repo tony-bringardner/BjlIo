@@ -30,7 +30,7 @@ import java.nio.charset.Charset;
  *  OutputStream that writes lines terminated with a CRLF pair.
  * 
  */
-public class CRLFLineWriter extends AbstractLineWriter implements ILineWriter,IoConstants{
+public class CRLFLineWriter extends AbstractLineWriter implements ILineWriter {
 
 	//  Private copy so changes to the public IoConstants.CRNL array can't affect this class.
 	private static final byte [] TERMINATOR = { '\r','\n'};

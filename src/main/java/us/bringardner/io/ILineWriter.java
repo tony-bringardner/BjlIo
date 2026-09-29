@@ -37,7 +37,7 @@ import java.io.IOException;
  * Objects that implement this Interface know how to write a line of text
  * to an OutputStream. 
  */
-public interface ILineWriter extends IoConstants,AutoCloseable {
+public interface ILineWriter extends AutoCloseable {
 	
 	
 	

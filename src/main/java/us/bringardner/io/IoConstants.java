@@ -25,10 +25,19 @@
  */
 package us.bringardner.io;
 
-public interface IoConstants {
+/**
+ * Constants used by the classes in this package.
+ * <p>
+ * Refer to them as {@code IoConstants.CR} (or with {@code import static us.bringardner.io.IoConstants.*;}).
+ */
+public final class IoConstants {
+
+	private IoConstants() {
+		//  Constants only, never instantiated.
+	}
 	
 	/**
-	 * The default buffer size for ILineReader & ILineWriter
+	 * The default buffer size for the line readers and writers.
 	 */
 	public static final int DEFAULT_BUFFER_SIZE = 1024*4;
 	
