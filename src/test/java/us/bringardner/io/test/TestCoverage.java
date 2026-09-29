@@ -372,6 +372,35 @@ class TestCoverage {
 		assertEquals("abcdefg", out.toString("US-ASCII"));
 	}
 
+	@Test
+	void testWriterCountsBytesFromSeveralThreads() throws Exception {
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		int threads = 8;
+		int lines = 2000;
+		try(LFLineWriter w = new LFLineWriter(out)) {
+			w.setAutoFlush(false);
+			Thread [] workers = new Thread[threads];
+			for (int t = 0; t < threads; t++) {
+				workers[t] = new Thread(() -> {
+					try {
+						for (int idx = 0; idx < lines; idx++) {
+							w.writeLine("0123456789");
+						}
+					} catch (IOException e) {
+						throw new IllegalStateException(e);
+					}
+				});
+				workers[t].start();
+			}
+			for (Thread worker : workers) {
+				worker.join();
+			}
+			//  No counts are lost when several threads write at once.
+			assertEquals((long)threads * lines * 11, w.getBytesOut());
+			assertEquals(out.size(), w.getBytesOut());
+		}
+	}
+
 	// ------------------------------------------------------------------------
 	//  Monitored streams
 	// ------------------------------------------------------------------------
@@ -394,10 +423,8 @@ class TestCoverage {
 		assertEquals(10, in.available());
 		assertTrue(in.markSupported());
 		assertEquals(target.toString(), in.toString());
-		assertEquals(target.hashCode(), in.hashCode());
-		assertTrue(in.equals(new MonitoredInputStream(target, mon)));
-		assertFalse(in.equals(new MonitoredInputStream(new ByteArrayInputStream(new byte[0]), mon)));
-		assertFalse(in.equals("not a stream"));
+		//  Like other streams, a monitored stream is only equal to itself.
+		assertFalse(in.equals(new MonitoredInputStream(target, mon)));
 
 		in.mark(100);
 		byte [] b = new byte[3];
@@ -449,10 +476,8 @@ class TestCoverage {
 		MonitoredOutputStream out = new MonitoredOutputStream(target, 3, mon);
 
 		assertEquals(target.toString(), out.toString());
-		assertEquals(target.hashCode(), out.hashCode());
-		assertTrue(out.equals(new MonitoredOutputStream(target, mon)));
-		assertFalse(out.equals(new MonitoredOutputStream(new ByteArrayOutputStream(), mon)));
-		assertFalse(out.equals(null));
+		//  Like other streams, a monitored stream is only equal to itself.
+		assertFalse(out.equals(new MonitoredOutputStream(target, mon)));
 
 		//  An empty write is not reported (and does not start the monitor).
 		out.write(new byte[4], 0, 0);

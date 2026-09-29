@@ -38,10 +38,10 @@ import java.util.Objects;
  */
 public class MonitoredOutputStream extends OutputStream {
 
-	OutputStream target;
-	IStreamMonitor monitor;
-	long total=0;
-	long blockSize=(4*1024);
+	private final OutputStream target;
+	private final IStreamMonitor monitor;
+	private long total=0;
+	private long blockSize=(4*1024);
 	private boolean started = false;
 	private boolean completed = false;
 	
@@ -96,21 +96,6 @@ public class MonitoredOutputStream extends OutputStream {
 		}
 	}
 
-	@Override
-	public boolean equals(Object obj) {
-		if (obj instanceof MonitoredOutputStream) {
-			MonitoredOutputStream mos = (MonitoredOutputStream) obj;
-			return target.equals(mos.target);
-		} else {
-			return false;
-		}
-	}
-
-	@Override
-	public int hashCode() {
-		return target.hashCode();
-	}
-	
 	@Override
 	public void flush() throws IOException {
 		target.flush();

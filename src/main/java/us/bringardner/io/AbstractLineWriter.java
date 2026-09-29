@@ -38,6 +38,7 @@ import java.io.OutputStream;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicLong;
 
 
 /**
@@ -54,8 +55,9 @@ public abstract class AbstractLineWriter  extends FilterOutputStream implements 
 	/** The Charset used when a Charset is not provided. */
 	public static final Charset DEFAULT_CHARSET = StandardCharsets.UTF_8;
 
-	//  Read by other threads (e.g. idle time-out monitors) so they must be volatile.
-	private volatile long bytes;
+	//  Read by other threads (e.g. idle time-out monitors) so they must be volatile / atomic.
+	//  AtomicLong so no counts are lost when several threads write at the same time.
+	private final AtomicLong bytes = new AtomicLong();
 	private volatile boolean autoFlush = true;
 	private volatile long lastWriteTime;
 	private final byte [] terminator;
@@ -111,11 +113,11 @@ public abstract class AbstractLineWriter  extends FilterOutputStream implements 
 
 	@Override
 	public long getBytesOut()	{
-		return bytes;
+		return bytes.get();
 	}
 
 	private void written(long count) throws IOException {
-		bytes += count;
+		bytes.addAndGet(count);
 		lastWriteTime=System.currentTimeMillis();
 		if( autoFlush ) {
 			flush();

@@ -39,11 +39,11 @@ public class MonitoredInputStream extends InputStream {
 
 	
 	
-	InputStream target;
-	IStreamMonitor monitor;
-	long totalRead=0;
-	long blockSize = (4*1024);
-	boolean completed=false;
+	private final InputStream target;
+	private final IStreamMonitor monitor;
+	private long totalRead=0;
+	private long blockSize = (4*1024);
+	private boolean completed=false;
 	private boolean started=false;
 	private long markedTotal = -1;
 	
@@ -66,21 +66,6 @@ public class MonitoredInputStream extends InputStream {
 	@Override
 	public int available() throws IOException {
 		return target.available();
-	}
-	
-	@Override
-	public boolean equals(Object obj) {
-		if (obj instanceof MonitoredInputStream) {
-			MonitoredInputStream mis = (MonitoredInputStream) obj;
-			return target.equals(mis.target);
-		} else {
-			return false;
-		}
-	}
-
-	@Override
-	public int hashCode() {
-		return target.hashCode();
 	}
 	
 	@Override
