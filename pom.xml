@@ -5,7 +5,7 @@
 	<artifactId>bjl_io</artifactId>
 	<name>Bringardner Java Library IO</name>
 	<groupId>us.bringardner</groupId>
-	<version>0.1.2</version>
+	<version>1.0.0</version>
 	<description>
 		The IO project contains a few helpful classes for reading and
 		writing lines of text. The end of a line (EOL) of text varies from one
@@ -19,6 +19,10 @@
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 		<maven.compiler.release>11</maven.compiler.release>
 		<junit.version>5.11.4</junit.version>
+		<jacoco.version>0.8.13</jacoco.version>
+		<!-- 'mvn verify' fails if coverage of the whole project drops below these ratios -->
+		<jacoco.minLineCoverage>0.90</jacoco.minLineCoverage>
+		<jacoco.minBranchCoverage>0.90</jacoco.minBranchCoverage>
 	</properties>
 
 	<build>
@@ -27,6 +31,11 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-source-plugin</artifactId>
+			</plugin>
+			<!-- JaCoCo code coverage: 'mvn verify' writes the report to target/site/jacoco/index.html -->
+			<plugin>
+				<groupId>org.jacoco</groupId>
+				<artifactId>jacoco-maven-plugin</artifactId>
 			</plugin>
 		</plugins>
 
@@ -95,6 +104,55 @@
 					<artifactId>maven-surefire-plugin</artifactId>
 					<version>3.5.2</version>
 				</plugin>
+
+				<plugin>
+					<groupId>org.jacoco</groupId>
+					<artifactId>jacoco-maven-plugin</artifactId>
+					<version>${jacoco.version}</version>
+					<executions>
+						<!-- Sets the surefire argLine so the tests run with the JaCoCo agent.
+						     If you ever set argLine yourself, use "@{argLine} your-flags" or coverage will be 0%. -->
+						<execution>
+							<id>prepare-agent</id>
+							<goals>
+								<goal>prepare-agent</goal>
+							</goals>
+						</execution>
+						<execution>
+							<id>report</id>
+							<phase>verify</phase>
+							<goals>
+								<goal>report</goal>
+							</goals>
+						</execution>
+						<execution>
+							<id>check</id>
+							<phase>verify</phase>
+							<goals>
+								<goal>check</goal>
+							</goals>
+							<configuration>
+								<rules>
+									<rule>
+										<element>BUNDLE</element>
+										<limits>
+											<limit>
+												<counter>LINE</counter>
+												<value>COVEREDRATIO</value>
+												<minimum>${jacoco.minLineCoverage}</minimum>
+											</limit>
+											<limit>
+												<counter>BRANCH</counter>
+												<value>COVEREDRATIO</value>
+												<minimum>${jacoco.minBranchCoverage}</minimum>
+											</limit>
+										</limits>
+									</rule>
+								</rules>
+							</configuration>
+						</execution>
+					</executions>
+				</plugin>
 			</plugins>
 		</pluginManagement>
 
@@ -115,7 +173,7 @@
 		<dependency>
 			<groupId>us.bringardner</groupId>
 			<artifactId>bjl_core</artifactId>
-			<version>0.1.2</version>
+			<version>1.0.0</version>
 			<scope>test</scope>
 		</dependency>
 		<!-- junit-jupiter includes the API (to compile tests) and the engine (to run them) -->
