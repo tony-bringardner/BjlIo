@@ -5,7 +5,7 @@
 	<artifactId>bjl_io</artifactId>
 	<name>Bringardner Java Library IO</name>
 	<groupId>us.bringardner</groupId>
-	<version>1.0.0</version>
+	<version>1.0.1-SNAPSHOT</version>
 	<description>
 		The IO project contains a few helpful classes for reading and
 		writing lines of text. The end of a line (EOL) of text varies from one

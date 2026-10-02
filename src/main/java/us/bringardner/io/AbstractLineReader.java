@@ -36,12 +36,13 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Objects;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Common implementation for the line readers.
  * <p>
  * The reader keeps its own buffer and scans it for the line terminator, so a line
- * is read with a few bulk reads instead of one (synchronized) call per byte.
+ * is read with a few bulk reads instead of one (locked) call per byte.
  * The raw bytes of each line are decoded with the reader's {@link Charset}
  * (UTF-8 unless another one is given to the constructor).
  * <p>
@@ -65,8 +66,16 @@ public abstract class AbstractLineReader extends FilterInputStream implements IL
 	//  Longest line readLine() accepts (0 = no limit).
 	private volatile int maxLineLength;
 
+	/**
+	 * Guards the buffer and the line being read. A lock instead of synchronized methods
+	 * (BJL-55): readers usually block on a socket while holding it, and on Java 21-23 a
+	 * virtual thread blocked inside a monitor pins its carrier thread, so a server with a
+	 * virtual thread per connection stopped once there were as many idle connections as CPUs.
+	 */
+	private final ReentrantLock lock = new ReentrantLock();
+
 	//  Read by other threads (e.g. idle time-out monitors) so they must be volatile.
-	//  bytes is only changed in synchronized methods, so += is safe.
+	//  bytes is only changed while holding lock, so += is safe.
 	private volatile long bytes;
 	private volatile long lastReadTime;
 
@@ -163,72 +172,82 @@ public abstract class AbstractLineReader extends FilterInputStream implements IL
 	 * @see us.bringardner.io.ILineReader#readLine()
 	 */
 	@Override
-	public synchronized String readLine() throws IOException {
-		lineLen = 0;
-		boolean gotData = false;
-		boolean terminated = false;
-		boolean crlf = isCrlfTerminated();
+	public String readLine() throws IOException {
+		lock.lock();
+		try {
+			lineLen = 0;
+			boolean gotData = false;
+			boolean terminated = false;
+			boolean crlf = isCrlfTerminated();
 
-		while( !terminated ) {
-			if( !fill() ) {
-				break;
-			}
-			gotData = true;
-			int start = pos;
-			int idx = start;
-			while( idx < limit && buf[idx] != NL ) {
-				idx++;
-			}
-			if( idx == limit ) {
-				//  No LF in the buffer, keep everything and read more.
-				appendToLine(buf, start, limit - start);
-				pos = limit;
-				bytes += limit - start;
-				checkLength(crlf ? 1 : 0);
-			} else {
-				appendToLine(buf, start, idx - start);
-				pos = idx + 1;
-				//  The LF is consumed (and counted) too.
-				bytes += pos - start;
-				if( !crlf ) {
-					terminated = true;
-				} else if( lineLen > 0 && line[lineLen - 1] == CR ) {
-					lineLen--;
-					terminated = true;
-				} else {
-					//  A lone LF is part of a CRLF terminated line
-					appendToLine(buf, idx, 1);
+			while( !terminated ) {
+				if( !fill() ) {
+					break;
 				}
-				checkLength(terminated ? 0 : 1);
+				gotData = true;
+				int start = pos;
+				int idx = start;
+				while( idx < limit && buf[idx] != NL ) {
+					idx++;
+				}
+				if( idx == limit ) {
+					//  No LF in the buffer, keep everything and read more.
+					appendToLine(buf, start, limit - start);
+					pos = limit;
+					bytes += limit - start;
+					checkLength(crlf ? 1 : 0);
+				} else {
+					appendToLine(buf, start, idx - start);
+					pos = idx + 1;
+					//  The LF is consumed (and counted) too.
+					bytes += pos - start;
+					if( !crlf ) {
+						terminated = true;
+					} else if( lineLen > 0 && line[lineLen - 1] == CR ) {
+						lineLen--;
+						terminated = true;
+					} else {
+						//  A lone LF is part of a CRLF terminated line
+						appendToLine(buf, idx, 1);
+					}
+					checkLength(terminated ? 0 : 1);
+				}
 			}
-		}
 
-		lastReadTime = System.currentTimeMillis();
-		if( !gotData ) {
-			return null;
-		}
+			lastReadTime = System.currentTimeMillis();
+			if( !gotData ) {
+				return null;
+			}
 
-		//  At EOF, ignore a trailing CR (the LF never arrived).
-		if( !terminated && crlf && lineLen > 0 && line[lineLen - 1] == CR ) {
-			lineLen--;
-		}
-		checkLength(0);
+			//  At EOF, ignore a trailing CR (the LF never arrived).
+			if( !terminated && crlf && lineLen > 0 && line[lineLen - 1] == CR ) {
+				lineLen--;
+			}
+			checkLength(0);
 
-		String ret = new String(line, 0, lineLen, charset);
-		if( line.length > DEFAULT_BUFFER_SIZE * 4 ) {
-			//  Don't hold on to the memory used by an unusually long line.
-			line = new byte[128];
+			String ret = new String(line, 0, lineLen, charset);
+			if( line.length > DEFAULT_BUFFER_SIZE * 4 ) {
+				//  Don't hold on to the memory used by an unusually long line.
+				line = new byte[128];
+			}
+			return ret;
+		} finally {
+			lock.unlock();
 		}
-		return ret;
 	}
 
 	@Override
-	public synchronized int read() throws IOException {
-		if( !fill() ) {
-			return -1;
+	public int read() throws IOException {
+		lock.lock();
+		try {
+			if( !fill() ) {
+				return -1;
+			}
+			bytes++;
+			return buf[pos++] & 0xff;
+		} finally {
+			lock.unlock();
 		}
-		bytes++;
-		return buf[pos++] & 0xff;
 	}
 
 	@Override
@@ -237,52 +256,67 @@ public abstract class AbstractLineReader extends FilterInputStream implements IL
 	}
 
 	@Override
-	public synchronized int read(byte[] b, int off, int len) throws IOException {
-		Objects.checkFromIndexSize(off, len, b.length);
-		if( len == 0 ) {
-			return 0;
-		}
-		if( pos >= limit && len >= buf.length ) {
-			//  Nothing buffered and the caller wants a lot; read directly.
-			int n = in.read(b, off, len);
-			if( n > 0 ) {
-				bytes += n;
+	public int read(byte[] b, int off, int len) throws IOException {
+		lock.lock();
+		try {
+			Objects.checkFromIndexSize(off, len, b.length);
+			if( len == 0 ) {
+				return 0;
 			}
+			if( pos >= limit && len >= buf.length ) {
+				//  Nothing buffered and the caller wants a lot; read directly.
+				int n = in.read(b, off, len);
+				if( n > 0 ) {
+					bytes += n;
+				}
+				return n;
+			}
+			if( !fill() ) {
+				return -1;
+			}
+			int n = Math.min(len, limit - pos);
+			System.arraycopy(buf, pos, b, off, n);
+			pos += n;
+			bytes += n;
 			return n;
+		} finally {
+			lock.unlock();
 		}
-		if( !fill() ) {
-			return -1;
-		}
-		int n = Math.min(len, limit - pos);
-		System.arraycopy(buf, pos, b, off, n);
-		pos += n;
-		bytes += n;
-		return n;
 	}
 
 	@Override
-	public synchronized long skip(long n) throws IOException {
-		if( n <= 0 ) {
-			return 0;
-		}
-		int buffered = limit - pos;
-		if( buffered > 0 ) {
-			int skipped = (int)Math.min(n, buffered);
-			pos += skipped;
-			bytes += skipped;
+	public long skip(long n) throws IOException {
+		lock.lock();
+		try {
+			if( n <= 0 ) {
+				return 0;
+			}
+			int buffered = limit - pos;
+			if( buffered > 0 ) {
+				int skipped = (int)Math.min(n, buffered);
+				pos += skipped;
+				bytes += skipped;
+				return skipped;
+			}
+			long skipped = in.skip(n);
+			if( skipped > 0 ) {
+				bytes += skipped;
+			}
 			return skipped;
+		} finally {
+			lock.unlock();
 		}
-		long skipped = in.skip(n);
-		if( skipped > 0 ) {
-			bytes += skipped;
-		}
-		return skipped;
 	}
 
 	@Override
-	public synchronized int available() throws IOException {
-		long ret = (long)(limit - pos) + in.available();
-		return (int)Math.min(Integer.MAX_VALUE, ret);
+	public int available() throws IOException {
+		lock.lock();
+		try {
+			long ret = (long)(limit - pos) + in.available();
+			return (int)Math.min(Integer.MAX_VALUE, ret);
+		} finally {
+			lock.unlock();
+		}
 	}
 
 	/**
