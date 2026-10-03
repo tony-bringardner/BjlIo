@@ -59,7 +59,8 @@ public abstract class AbstractLineReader extends FilterInputStream implements IL
 	private int pos;
 	private int limit;
 
-	//  The bytes of the line being read (may span several buffer fills).
+	//  The bytes of the line being read (may span several buffer fills). Kept when readLine()
+	//  throws (a read timeout, say), so the next call carries on with the same line.
 	private byte [] line = new byte[128];
 	private int lineLen;
 
@@ -150,6 +151,9 @@ public abstract class AbstractLineReader extends FilterInputStream implements IL
 			}
 			pos = 0;
 			limit = n;
+			if( n > 0 ) {
+				lastReadTime = System.currentTimeMillis();
+			}
 		}
 		return true;
 	}
@@ -167,6 +171,11 @@ public abstract class AbstractLineReader extends FilterInputStream implements IL
 	 * Read a line from the input.  The line will include all
 	 * text up to (but NOT including) the line terminator.
 	 * A final line that is not terminated is also returned.
+	 * <p>
+	 * If reading fails part way through a line (most often a {@link java.net.SocketTimeoutException}
+	 * from a socket with a read timeout), the part already read is kept and the next call carries on
+	 * with the same line. Before, it was dropped, so a client that paused in the middle of a line for
+	 * longer than the timeout had the start of the line cut off.
 	 *
 	 * @return the next line or null if the EOF was reached before any data was read.
 	 * @see us.bringardner.io.ILineReader#readLine()
@@ -175,8 +184,8 @@ public abstract class AbstractLineReader extends FilterInputStream implements IL
 	public String readLine() throws IOException {
 		lock.lock();
 		try {
-			lineLen = 0;
-			boolean gotData = false;
+			//  lineLen is not reset here: a line interrupted by an exception is still in progress.
+			boolean gotData = lineLen > 0;
 			boolean terminated = false;
 			boolean crlf = isCrlfTerminated();
 
@@ -226,6 +235,7 @@ public abstract class AbstractLineReader extends FilterInputStream implements IL
 			checkLength(0);
 
 			String ret = new String(line, 0, lineLen, charset);
+			lineLen = 0;
 			if( line.length > DEFAULT_BUFFER_SIZE * 4 ) {
 				//  Don't hold on to the memory used by an unusually long line.
 				line = new byte[128];
@@ -268,6 +278,7 @@ public abstract class AbstractLineReader extends FilterInputStream implements IL
 				int n = in.read(b, off, len);
 				if( n > 0 ) {
 					bytes += n;
+					lastReadTime = System.currentTimeMillis();
 				}
 				return n;
 			}
@@ -301,6 +312,7 @@ public abstract class AbstractLineReader extends FilterInputStream implements IL
 			long skipped = in.skip(n);
 			if( skipped > 0 ) {
 				bytes += skipped;
+				lastReadTime = System.currentTimeMillis();
 			}
 			return skipped;
 		} finally {

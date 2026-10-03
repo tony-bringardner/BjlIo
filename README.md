@@ -41,7 +41,7 @@ The artifact is published to GitHub Packages:
 <dependency>
     <groupId>us.bringardner</groupId>
     <artifactId>bjl_io</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
 </dependency>
 ```
 

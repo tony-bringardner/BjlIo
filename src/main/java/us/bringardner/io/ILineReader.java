@@ -68,6 +68,10 @@ public interface ILineReader extends AutoCloseable {
 	 */
 	public long getBytesIn();
 	
+	/**
+	 * @return when data was last read from the InputStream (System.currentTimeMillis()), by any
+	 * of the read methods, or 0 if nothing has been read yet. Idle checks use it.
+	 */
 	public long getLastReadTime();
 	public int inputAvailable() throws IOException ;
 }

@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.0.1 (unreleased)
+
+### Fixed
+
+- A line interrupted by a read error was lost. If reading failed part way through a line, most often
+  a `SocketTimeoutException` from a socket with a read timeout, the next `readLine()` started a new
+  line and the part already read was dropped. A server that retries after a timeout (as
+  bjl_net_framework does) then saw a client that paused in the middle of a line, longer than the
+  timeout, send `ice` instead of `USER alice`. The part read is now kept and the next `readLine()`
+  carries on with the same line; at the end of the stream it is returned as the last line.
+- `getLastReadTime()` was only updated by `readLine()`, so a connection read with `read()`,
+  `read(byte[])` or `skip()` looked idle to an idle check (and could be closed while it was busy).
+  It is now updated whenever data is read, by any method.
+
+### Changed
+
+- The line readers use a `ReentrantLock` instead of `synchronized` methods (BJL-55). A reader is
+  usually blocked on a socket while it holds the lock, and on Java 21-23 a virtual thread blocked
+  inside a `synchronized` method holds on to its carrier thread, so a server with a virtual thread
+  per connection stopped responding once there were as many idle connections as CPUs.
+
 ## 1.0.0
 
 First stable release. It contains breaking changes from 0.1.x; see
