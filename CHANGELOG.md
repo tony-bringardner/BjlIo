@@ -13,6 +13,20 @@
 - `getLastReadTime()` was only updated by `readLine()`, so a connection read with `read()`,
   `read(byte[])` or `skip()` looked idle to an idle check (and could be closed while it was busy).
   It is now updated whenever data is read, by any method.
+- `ContinuousInputStream` (`tail -f`) kept reading a log file after it was moved (or deleted) and a new
+  one created under the same name, logrotate's default, so it silently stopped seeing new lines. It now
+  reads the rest of the old file and then the new one from its beginning, like `tail -F`. A moved file
+  that isn't replaced is still read (whatever has it open may still write to it). This needs the file's
+  name, so it isn't done for a stream made from a `RandomAccessFile`; on Windows an open file can't be
+  moved anyway.
+- `ContinuousInputStream.readLine()` dropped the part of a line it had read when it was interrupted
+  (`InterruptedIOException`); the next call carries on with the same line now.
+
+### Added
+
+- `ContinuousInputStream.setMaxLineLength(int)` / `getMaxLineLength()`: `readLine()` throws
+  `LineTooLongException` for a longer line, so a file without line terminators (a binary file, say)
+  can't make it run out of memory. Off by default.
 
 ### Changed
 
@@ -20,6 +34,7 @@
   usually blocked on a socket while it holds the lock, and on Java 21-23 a virtual thread blocked
   inside a `synchronized` method holds on to its carrier thread, so a server with a virtual thread
   per connection stopped responding once there were as many idle connections as CPUs.
+  `ContinuousInputStream` does the same: it waits (sleeps) for data while holding its lock.
 
 ## 1.0.0
 
