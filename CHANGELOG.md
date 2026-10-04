@@ -1,6 +1,13 @@
 # Changelog
 
-## 1.1.0 (unreleased)
+## 1.1.1 (unreleased)
+
+### Added
+
+- `IoUtils.closeQuietly(AutoCloseable...)`: close and ignore failures (null safe), replacing the private
+  `closeQuietly` helpers and inline `try { x.close(); } catch {}` blocks in the BJL projects.
+
+## 1.1.0
 
 ### Fixed
 
